@@ -136,6 +136,24 @@ class TestGeminiCLIClient:
         data = json.loads(cfg.read_text())
         assert data["mcpServers"]["skein"]["url"] == "http://x/mcp"
 
+    def test_connect_writes_schema_compatible_with_gemini_cli(self, fake_home, repo):
+        """Regression: Gemini CLI v0.41+ rejects unknown keys under
+        mcpServers.<name> with a red startup warning. The schema only
+        accepts url/httpUrl/command/args/env/cwd/headers/timeout/trust/
+        description/includeTools/excludeTools — and no "transport" field
+        (transport is inferred from key presence). Make sure we only emit
+        the documented HTTP-streamable subset."""
+        clients_mod.GeminiCLIClient().connect("http://x/mcp", "tok", "p", repo)
+        cfg = fake_home / ".gemini" / "settings.json"
+        entry = json.loads(cfg.read_text())["mcpServers"]["skein"]
+        assert "transport" not in entry, (
+            "Gemini CLI rejects 'transport' under mcpServers.<name>"
+        )
+        assert entry["url"] == "http://x/mcp"
+        assert entry["headers"] == {"Authorization": "Bearer tok"}
+        # Ensure we didn't sneak in any other unexpected keys.
+        assert set(entry.keys()) == {"url", "headers"}
+
     def test_disconnect_removes_skein(self, fake_home, repo):
         client = clients_mod.GeminiCLIClient()
         client.connect("http://x/mcp", "tok", "p", repo)

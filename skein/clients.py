@@ -266,9 +266,15 @@ class GeminiCLIClient(BaseClient):
         path = Path.home() / ".gemini" / "settings.json"
         data = _read_json(path)
         data.setdefault("mcpServers", {})
+        # Gemini CLI's schema (settings.json) does NOT accept a "transport"
+        # key under mcpServers — it infers HTTP vs stdio from the presence
+        # of "url"/"httpUrl" vs "command". Including "transport" makes
+        # Gemini CLI print a red "Unrecognized key(s)" warning at startup
+        # even though the connection still works. Keep this object to the
+        # documented keys only: url + headers.
+        # See: https://geminicli.com/docs/reference/configuration/
         data["mcpServers"]["skein"] = {
             "url": mcp_url,
-            "transport": "http",
             "headers": {"Authorization": f"Bearer {bearer_token}"},
         }
         _write_json(path, data)
