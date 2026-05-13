@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #fbf8f4;
+  --fg: #1c1c1a;
+  --muted: #6a665c;
+  --brand: #d97757;
+  --divider: #e8e3d8;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: rgba(217, 119, 87, 0.18);
+  color: var(--fg);
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeInUp 0.6s ease-out both;
+}
+
+/* Subtle hover for interactive elements */
+.brand-link {
+  color: var(--brand);
+  transition: opacity 0.15s ease;
+}
+.brand-link:hover {
+  opacity: 0.75;
+}
