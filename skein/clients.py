@@ -141,12 +141,14 @@ class ClaudeCodeClient(BaseClient):
         # MCP client can authenticate against /mcp. Without this the entry
         # registers but every initialize returns 401 — exactly the "Failed
         # to connect" the user was seeing in `claude mcp list`.
+        logger.info(f"Connecting Claude Code to {mcp_url}...")
+        args = [
+            "claude", "mcp", "add", "skein", mcp_url,
+            "--transport", "http",
+            "--header", f"Authorization: Bearer {bearer_token}",
+        ]
         out = subprocess.run(
-            [
-                "claude", "mcp", "add", "skein", mcp_url,
-                "--transport", "http",
-                "--header", f"Authorization: Bearer {bearer_token}",
-            ],
+            args,
             capture_output=True, text=True, timeout=15, env=env,
         )
         if out.returncode != 0:

@@ -73,6 +73,28 @@ class TestRegistry:
 
 
 # ---------------------------------------------------------------------------
+# Claude Code
+# ---------------------------------------------------------------------------
+
+class TestClaudeCodeClient:
+    def test_connect_calls_claude_binary(self, fake_home, repo, monkeypatch):
+        from unittest.mock import MagicMock
+        mock_run = MagicMock(returncode=0, stdout="", stderr="")
+        monkeypatch.setattr("shutil.which", lambda n: "/bin/claude" if n == "claude" else None)
+        monkeypatch.setattr("subprocess.run", mock_run)
+
+        client = clients_mod.ClaudeCodeClient()
+        client.connect("http://x/mcp", "tok", "p", repo)
+
+        # Should call remove then add
+        assert mock_run.call_count == 2
+        add_call_args = mock_run.call_args_list[1][0][0]
+        assert "add" in add_call_args
+        assert "--header" in add_call_args
+        assert "Authorization: Bearer tok" in add_call_args
+
+
+# ---------------------------------------------------------------------------
 # Cursor
 # ---------------------------------------------------------------------------
 
