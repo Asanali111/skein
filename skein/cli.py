@@ -581,6 +581,51 @@ def up(
             f"  {ui.mark('warn')} Code scanner skipped: {e}"
         )
 
+    # ---- 7c. passive docs scan (iter 19) ----
+    # Index README / CHANGELOG / docs/** / ADRs as fragments so `recall` returns
+    # the project's own documentation, not just scanner trivia.
+    try:
+        from . import ui
+        from .docs_watcher import scan_docs
+        from .passive import promote_scanned_facts
+        from .config import get_config as _gc
+        from .storage import Storage as _Storage
+        cfg2 = _gc()
+        st = _Storage(cfg2.db_path)
+        try:
+            doc_facts = scan_docs(repo_path)
+            if doc_facts:
+                scope_obj_now = st.get_scope(scope_handle)
+                from .auth import token_prefix as _tp
+                from .models import IdentityCreate
+                identity = st.get_or_create_identity(IdentityCreate(
+                    handle=f"user:{_tp(cfg.bearer_token)}",
+                    type="user", name="local-user",
+                ))
+                provider = _get_emb(cfg.embedding_provider)
+                res = promote_scanned_facts(
+                    doc_facts, storage=st, provider=provider,
+                    scope_id=scope_obj_now.id, owner_id=identity.id,
+                    source_tool="docs-scanner",
+                )
+                if res.auto_promoted or res.superseded:
+                    ui.step(
+                        "Indexed project documentation",
+                        detail=(
+                            f"{res.auto_promoted} new · "
+                            f"{res.superseded} updated · "
+                            f"{res.duplicate} unchanged"
+                        ),
+                        state="ok",
+                    )
+        finally:
+            st.close()
+    except Exception as e:
+        from . import ui
+        err_console.print(
+            f"  {ui.mark('warn')} Docs scanner skipped: {e}"
+        )
+
     # ---- 8. friendly summary ----
     from . import ui
     ui.header("Skein is ready", state="ok")
@@ -2708,6 +2753,79 @@ def scope_list(output_json: bool) -> None:
 # ---------------------------------------------------------------------------
 # hook (singular) — handlers invoked by Claude Code etc.
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# docs — passive markdown documentation scanner (iter 19)
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def docs() -> None:
+    """Index the project's markdown documentation into Skein."""
+
+
+@docs.command("sync")
+@click.option("--repo", default=None, type=click.Path(file_okay=False),
+              help="Project root to scan (default: cwd).")
+@click.option("--scope", default=None, help="Scope handle (default: from .skein/scope or config).")
+def docs_sync(repo: Optional[str], scope: Optional[str]) -> None:
+    """Re-scan README/CHANGELOG/docs/** and promote fragments now.
+
+    Useful after editing the project's docs without re-running ``skein up``.
+    Uses the same supersede pipeline so updated content replaces the prior
+    fragment in place rather than stacking copies.
+    """
+    from . import ui
+    from .auth import token_prefix as _tp
+    from .config import get_config
+    from .docs_watcher import scan_docs
+    from .embeddings import get_provider as _get_emb
+    from .models import IdentityCreate
+    from .passive import promote_scanned_facts
+    from .storage import Storage
+
+    repo_path = Path(repo).resolve() if repo else Path.cwd().resolve()
+    if not repo_path.is_dir():
+        err_console.print(f"[red]✗[/red] Repo path not found: {repo_path}")
+        sys.exit(1)
+
+    scope_handle = scope or _resolve_scope(None)
+    cfg = get_config()
+    st = Storage(cfg.db_path)
+    try:
+        scope_obj = st.get_scope(scope_handle)
+        if scope_obj is None:
+            err_console.print(f"[red]✗[/red] Scope '{scope_handle}' not found.")
+            sys.exit(1)
+
+        facts = scan_docs(repo_path)
+        if not facts:
+            ui.step("No documentation found to scan", state="ok")
+            return
+
+        identity = st.get_or_create_identity(IdentityCreate(
+            handle=f"user:{_tp(cfg.bearer_token)}",
+            type="user", name="local-user",
+        ))
+        provider = _get_emb(cfg.embedding_provider)
+        res = promote_scanned_facts(
+            facts, storage=st, provider=provider,
+            scope_id=scope_obj.id, owner_id=identity.id,
+            source_tool="docs-scanner",
+        )
+        ui.step(
+            f"Scanned {len(facts)} doc fragment(s)",
+            detail=(
+                f"{res.auto_promoted} new · "
+                f"{res.superseded} updated · "
+                f"{res.duplicate} unchanged · "
+                f"{res.queued} queued"
+            ),
+            state="ok",
+        )
+    finally:
+        st.close()
+
 
 @main.group()
 def hook() -> None:
