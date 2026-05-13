@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from skein.scope_resolver import find_scope_pin, resolve_scope
+from skein.scope_resolver import _is_non_project_dir, find_scope_pin, resolve_scope
 
 
 class TestFindScopePin:
@@ -89,3 +89,41 @@ class TestResolveScope:
         monkeypatch.delenv("SKEIN_SCOPE", raising=False)
         with pytest.raises(RuntimeError):
             resolve_scope(None, config_default=None)
+
+class TestIsNonProjectDir:
+    @pytest.fixture
+    def mock_home(self, tmp_path, monkeypatch):
+        home_dir = tmp_path / "home"
+        home_dir.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: home_dir)
+        return home_dir
+
+    def test_root_and_system_dirs(self):
+        assert _is_non_project_dir(Path("/")) is True
+        assert _is_non_project_dir(Path("/tmp")) is True
+        assert _is_non_project_dir(Path("/var")) is True
+        assert _is_non_project_dir(Path("/private/tmp")) is True
+
+    def test_home_dir(self, mock_home):
+        assert _is_non_project_dir(mock_home) is True
+
+    def test_home_subdirs(self, mock_home):
+        assert _is_non_project_dir(mock_home / "Documents") is True
+        assert _is_non_project_dir(mock_home / "Desktop") is True
+        assert _is_non_project_dir(mock_home / "Downloads") is True
+
+    def test_valid_project_dirs(self, mock_home):
+        assert _is_non_project_dir(mock_home / "code" / "my-project") is False
+        assert _is_non_project_dir(mock_home / "Documents" / "my-project") is False
+        assert _is_non_project_dir(Path("/opt/my-project")) is False
+        assert _is_non_project_dir(Path("/tmp/my-project")) is False
+
+    def test_path_resolution(self, mock_home):
+        # A path like ~/Documents/.. resolves to ~ which is a non-project dir
+        assert _is_non_project_dir(mock_home / "Documents" / "..") is True
+
+        # A path like /tmp/../var resolves to /var which is a non-project dir
+        assert _is_non_project_dir(Path("/tmp/../var")) is True
+
+        # Project directory with ..
+        assert _is_non_project_dir(mock_home / "code" / "project" / ".." / "another_project") is False
