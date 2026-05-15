@@ -34,11 +34,17 @@ dependencies = [
   "watchdog>=3.0",
   "tomli>=2.0; python_version < '3.11'",
   "tomli-w>=1.0",
+  # Local-first semantic embeddings — BAAI/bge-small-en-v1.5 (384-dim).
+  # Downloads ~130 MB to ~/.cache/fastembed/ on first use. No API key.
+  "fastembed>=0.3.0",
 ]
 
 [project.optional-dependencies]
+# Cloud embedding providers — opt-in. Skein defaults to the local fastembed
+# provider so `pip install skein && skein up` is zero-config.
 gemini = ["google-genai>=0.3"]
 openai = ["openai>=1.30"]
+fastembed = ["fastembed>=0.3.0"]  # alias for explicit selection; already in base
 test = [
   "pytest>=7.4",
   "pytest-asyncio>=0.23",
