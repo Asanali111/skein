@@ -440,35 +440,55 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
 def get_provider(name: str) -> EmbeddingProvider:
     """Return an embedding provider by name.
 
-    Valid names: ``bm25`` (no-op vector, FTS5-only), ``gemini``, ``openai``,
-    ``hash`` (legacy / tests only — warns if used in production).
+    Valid names: ``fastembed`` (local 384-dim, default), ``gemini``, ``openai``,
+    ``bm25`` (no-op vector, FTS5-only), ``hash`` (legacy / tests only).
     """
     name = name.lower().strip()
     if name in ("bm25", "none", "off"):
         return BM25OnlyProvider()
     if name == "hash":
         return HashEmbeddingProvider()
+    if name == "fastembed":
+        return FastembedProvider()
     if name == "gemini":
         return GeminiEmbeddingProvider()
     if name == "openai":
         return OpenAIEmbeddingProvider()
     raise ValueError(
         f"Unknown embedding provider '{name}'. "
-        "Valid options: bm25, gemini, openai, hash"
+        "Valid options: fastembed, gemini, openai, bm25, hash"
     )
 
 
 def best_available_provider_name() -> str:
-    """Pick the most capable provider for which credentials exist.
+    """Pick the most capable provider for which credentials/packages exist.
 
     Used by ``skein init`` and ``skein up`` to default new installs to
-    semantic search when an API key is available, and to honest BM25-only
-    search otherwise.
+    semantic search.
+
+    Priority (iter 23):
+      1. ``gemini`` if GEMINI_API_KEY set AND google-genai installed
+      2. ``openai`` if OPENAI_API_KEY set AND openai installed
+      3. ``fastembed`` if fastembed package installed (default for fresh installs)
+      4. ``bm25`` if nothing else is available (FTS5-only fallback)
     """
     if os.environ.get("GEMINI_API_KEY"):
-        return "gemini"
+        try:
+            import google.genai  # noqa: F401
+            return "gemini"
+        except ImportError:
+            pass
     if os.environ.get("OPENAI_API_KEY"):
-        return "openai"
+        try:
+            import openai  # noqa: F401
+            return "openai"
+        except ImportError:
+            pass
+    try:
+        import fastembed  # noqa: F401
+        return "fastembed"
+    except ImportError:
+        pass
     return "bm25"
 
 
