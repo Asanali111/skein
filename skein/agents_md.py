@@ -73,6 +73,16 @@ def render_agents_md(
     lines.append(f"- `project_briefing()` returns the project dashboard in ONE call — <50ms, ~300 tokens.")
     lines.append(f"- `recall(\"<your task>\")` returns top-K relevant fragments — <100ms, ~30 tokens per fragment.")
     lines.append("- For comparison: reading 3 source files for the same context costs 3000+ tokens, 5+ round trips, and often misses the WHY.")
+    # Iter 23: surface the privacy story when a local embedding provider is active.
+    # The active provider is read from config — if config can't be loaded for any
+    # reason, skip the line silently rather than block the render.
+    try:
+        from .config import get_config
+        _active_provider = get_config().embedding_provider
+        if _active_provider in ("fastembed", "bm25", "hash"):
+            lines.append("- Embeddings run locally — no API key needed, your code never leaves this machine.")
+    except Exception:
+        pass
     lines.append("")
     lines.append("**Default behavior for any task on this project:**")
     lines.append("1. Call `project_briefing()` first if you need the project overview (what's it doing, where it's at, what changed lately).")

@@ -2530,22 +2530,47 @@ def doctor(show_perf: bool) -> None:
         check("AGENTS.md in cwd", agents_md.exists(),
               f"Not found at {agents_md}", "Run `skein sync`")
 
-        # Embedding provider sanity
+        # Embedding provider sanity (iter 23: fastembed is the new default)
         ep = cfg.embedding_provider
         if ep == "hash":
             check("Embedding provider", False,
                   "hash provider is non-semantic — not for production use",
-                  "Run `skein config set embedding_provider gemini` "
-                  "(set GEMINI_API_KEY first) OR `bm25` for honest keyword-only")
+                  "Run `skein config set embedding_provider fastembed` for "
+                  "local semantic embeddings (no API key needed)")
         elif ep == "bm25":
             ui.step("Embedding provider", state="ok",
-                    detail="bm25 (keyword-only — set GEMINI_API_KEY for semantic search)")
+                    detail="bm25 (keyword-only — `skein config set embedding_provider fastembed` "
+                           "for local semantic search, no API key needed)")
+        elif ep == "fastembed":
+            ui.step("Embedding provider (fastembed, dim=384)", state="ok",
+                    detail="local · BAAI/bge-small-en-v1.5 · no API key needed")
         elif ep in ("gemini", "openai"):
             key_var = "GEMINI_API_KEY" if ep == "gemini" else "OPENAI_API_KEY"
             has_key = bool(os.environ.get(key_var))
-            check(f"Embedding provider ({ep})", has_key,
+            check(f"Embedding provider ({ep}, cloud)", has_key,
                   f"{key_var} not set in environment",
-                  f"export {key_var}=… in your shell rc")
+                  f"export {key_var}=… in your shell rc, or "
+                  "`skein config set embedding_provider fastembed` for the local default")
+
+        # Iter 23: warn if stored embeddings have a different dimension than
+        # the active provider — recall results would be unreliable until
+        # `skein ingest . --reset` re-embeds with the new provider.
+        try:
+            from .storage import Storage as _St
+            _st_peek = _St(cfg.db_path)
+            stored_dim = _st_peek.peek_embedding_dimension()
+            from .embeddings import get_provider as _gp
+            try:
+                _prov = _gp(ep)
+                prov_dim = getattr(_prov, "dimension", None)
+            except Exception:
+                prov_dim = None
+            if stored_dim and prov_dim and stored_dim != prov_dim:
+                check("Embedding dimension match", False,
+                      f"stored dim={stored_dim} but active provider dim={prov_dim}",
+                      "Re-embed with `skein ingest . --reset`")
+        except Exception:
+            pass
 
         # Chunks integrity — flag suspicious source_roots
         try:
