@@ -68,6 +68,26 @@ async def lifespan(app: FastAPI):
     set_provider(provider)
     logger.info("Embedding provider: %s (dim=%d)", cfg.embedding_provider, provider.dimension)
 
+    # Iter 23: warn loudly if the stored embeddings' dimension doesn't match
+    # the active provider. Cosine similarity between a 384-dim query and a
+    # 768-dim stored vector is undefined — recall results would be garbage
+    # until the user re-embeds with `skein ingest . --reset`. We don't auto-
+    # invalidate (irreversible); just log the situation clearly so it shows
+    # up in `skein doctor` and the daemon stderr log.
+    try:
+        stored_dim = storage.peek_embedding_dimension()
+        provider_dim = getattr(provider, "dimension", None)
+        if stored_dim and provider_dim and stored_dim != provider_dim:
+            logger.warning(
+                "Embedding-provider mismatch: stored dim=%d, active provider=%r dim=%d. "
+                "Existing embeddings are unsearchable until re-embedded. "
+                "Run: skein ingest . --reset",
+                stored_dim, cfg.embedding_provider, provider_dim,
+            )
+    except Exception:
+        # peek failure must not block daemon startup
+        logger.debug("Embedding dimension peek failed; skipping mismatch check", exc_info=True)
+
     # Note: filesystem watchers do *not* run inside the daemon process.
     # On macOS, the daemon runs under launchd which has restricted TCC
     # access (no read access to ~/Documents/, ~/Desktop/, etc.). Watchers
