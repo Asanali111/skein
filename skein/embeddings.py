@@ -139,6 +139,56 @@ class HashEmbeddingProvider(EmbeddingProvider):
 
 
 # ---------------------------------------------------------------------------
+# Fastembed provider (local, default — iter 23)
+# ---------------------------------------------------------------------------
+
+class FastembedProvider(EmbeddingProvider):
+    """Local ONNX-quantized semantic embeddings via the `fastembed` package.
+
+    Default for new installs (iter 23). Replaces the previous BM25-only
+    default so `pip install skein && skein up` produces semantic search
+    out-of-the-box with no API key and no cloud round-trip.
+
+    Model: ``BAAI/bge-small-en-v1.5`` — 384-dim, ~62 MTEB retrieval avg
+    (~4 points below Gemini ``gemini-embedding-001``, well above the
+    older ``all-MiniLM-L6-v2``). The ONNX weights (~130 MB) download to
+    ``~/.cache/fastembed/`` on first instantiation; subsequent runs are
+    instant. Per-embed latency on M-series Macs is ~30–50 ms.
+
+    Privacy: every embed call runs locally. No network egress, no API
+    key, no per-request cost. Subject to neither rate limits nor cloud
+    downtime — exactly the "local-first context bus" the README promises.
+    """
+
+    dimension: int = 384
+    model: str = "BAAI/bge-small-en-v1.5"
+    is_real: bool = True
+
+    def __init__(self, model_name: Optional[str] = None) -> None:
+        if model_name:
+            self.model = model_name
+        try:
+            from fastembed import TextEmbedding  # type: ignore
+        except ImportError as e:
+            raise ImportError(
+                "fastembed package is required for the FastembedProvider. "
+                "Install it: pip install skein[fastembed]  (or: pip install fastembed)"
+            ) from e
+        # Lazily instantiate — first construction downloads model weights
+        # (~130 MB) into the fastembed cache directory. Subsequent runs
+        # reuse the cache and pay only the ONNX load (~200 ms).
+        self._model = TextEmbedding(model_name=self.model)
+
+    def embed(self, texts: List[str]) -> List[List[float]]:
+        if not texts:
+            return []
+        # ``TextEmbedding.embed`` yields one numpy array per input text.
+        # Materialize to plain Python lists so the return type matches
+        # the EmbeddingProvider contract (same shape as Gemini/OpenAI).
+        return [vec.tolist() for vec in self._model.embed(list(texts))]
+
+
+# ---------------------------------------------------------------------------
 # Gemini provider
 # ---------------------------------------------------------------------------
 
