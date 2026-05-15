@@ -22,12 +22,16 @@ DEFAULTS: Dict[str, Any] = {
     "port": 8765,
     "host": "127.0.0.1",
     "db_path": str(Path.home() / ".config" / "skein" / "skein.db"),
-    # ``bm25`` is the honest default — no fake vector embeddings, search
-    # uses FTS5 keyword matching. Real semantic search lights up when the
-    # user sets GEMINI_API_KEY (or OPENAI_API_KEY) and switches the provider.
-    # ``hash`` remains available for tests but emits a doctor warning.
-    "embedding_provider": "bm25",   # "bm25" | "gemini" | "openai" | "hash"
-    "embedding_dimension": 768,
+    # ``fastembed`` is the iter-23 default — local 384-dim BAAI/bge-small-en-v1.5
+    # ships in the base install so `pip install skein && skein up` is
+    # zero-config with real semantic search out of the box. No API key, no
+    # cloud round-trip, ~130 MB one-time model download. Cloud providers
+    # (``gemini``, ``openai``) are opt-in extras and take priority when their
+    # respective env vars + packages are present (see
+    # ``embeddings.best_available_provider_name``). ``bm25`` remains as the
+    # FTS5-only fallback; ``hash`` is legacy for tests only.
+    "embedding_provider": "fastembed",  # "fastembed" | "gemini" | "openai" | "bm25" | "hash"
+    "embedding_dimension": 384,
     "bearer_token": "",             # filled in by init
     "log_level": "info",
     "lease_cleanup_interval": 60,   # seconds between lease TTL cleanup
