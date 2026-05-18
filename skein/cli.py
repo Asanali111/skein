@@ -252,6 +252,44 @@ def up(
     scope_handle = scope or auto_detect_scope(repo_path)
     console.print(f"[bold]Project scope:[/bold] [cyan]{scope_handle}[/cyan]")
 
+    # ---- 2.5. Safety guards run BEFORE the daemon start.
+    # Iter 27 reordering: guards used to live inside the post-daemon try-
+    # block, which on Windows CI meant a slow / failing daemon-start
+    # short-circuited and the user never saw the actual cause (e.g.
+    # "no .git folder"). They are also semantically pointless after we've
+    # already paid the cost of spawning the daemon. Moving them here is a
+    # DX improvement on every platform.
+    from .ingest import _refuse_root
+    from . import ui as _guard_ui
+
+    refusal = _refuse_root(repo_path)
+    if refusal and not no_ingest:
+        err_console.print(
+            f"  {_guard_ui.mark('err')} Refusing to ingest {refusal}."
+        )
+        _guard_ui.hint(
+            "Run [bold]skein up[/bold] from a real project directory "
+            "(e.g. one with a [bold].git[/bold]/ folder)."
+        )
+        sys.exit(1)
+
+    # `.git` is required unless --no-ingest is set or the escape hatch is on.
+    if (
+        not no_ingest
+        and not (repo_path / ".git").exists()
+        and os.environ.get("SKEIN_ALLOW_NO_GIT") != "1"
+    ):
+        err_console.print(
+            f"  {_guard_ui.mark('err')} No [bold].git[/bold] folder in "
+            f"{repo_path} — refusing to ingest."
+        )
+        _guard_ui.hint(
+            "Run [bold]skein up[/bold] from inside a git repo, OR "
+            "use [bold]skein up --no-ingest[/bold] to skip indexing, OR "
+            "set [bold]SKEIN_ALLOW_NO_GIT=1[/bold] if you really mean it."
+        )
+        sys.exit(1)
+
     # ---- 3. start daemon (persistent by default) ----
     # On macOS, launchd-launched processes can't read files under ~/Documents,
     # ~/Desktop, ~/Downloads, etc. (TCC). If our venv lives in one of those,
@@ -373,41 +411,9 @@ def up(
                     for e in sync_result.errors:
                         err_console.print(f"[red]✗[/red] {e}")
 
-        # ---- 6.5. Safety guards FIRST. The watcher spawn + project registry
-        # used to happen before these checks, which meant a refused command
-        # still leaked a long-running watcher process and polluted the
-        # projects registry. The .git / refuse_root checks now run before
-        # anything that touches durable state. (Iter 15 bugfix.)
-        from .ingest import _refuse_root
-        from . import ui
-
-        refusal = _refuse_root(repo_path)
-        if refusal and not no_ingest:
-            err_console.print(
-                f"  {ui.mark('err')} Refusing to ingest {refusal}."
-            )
-            ui.hint(
-                "Run [bold]skein up[/bold] from a real project directory "
-                "(e.g. one with a [bold].git[/bold]/ folder)."
-            )
-            sys.exit(1)
-
-        # `.git` is required unless --no-ingest is set or the escape hatch is on.
-        if (
-            not no_ingest
-            and not (repo_path / ".git").exists()
-            and os.environ.get("SKEIN_ALLOW_NO_GIT") != "1"
-        ):
-            err_console.print(
-                f"  {ui.mark('err')} No [bold].git[/bold] folder in "
-                f"{repo_path} — refusing to ingest."
-            )
-            ui.hint(
-                "Run [bold]skein up[/bold] from inside a git repo, OR "
-                "use [bold]skein up --no-ingest[/bold] to skip indexing, OR "
-                "set [bold]SKEIN_ALLOW_NO_GIT=1[/bold] if you really mean it."
-            )
-            sys.exit(1)
+        # ---- 6.5. Safety guards (_refuse_root + .git check) ran earlier,
+        # before daemon start. See section 2.5 above (moved in iter 27 so
+        # we don't pay the daemon-start cost for refused directories).
 
         # ---- 6.6. register project + spawn detached watcher (live re-ingest)
         # `--no-persist` callers (notably the test suite, or anyone trying a
