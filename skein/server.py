@@ -215,10 +215,16 @@ def create_app(cfg: Optional[SkeinConfig] = None) -> FastAPI:
     )
     app.state.cfg = cfg
 
+    # CORS: dev-server origins, the daemon's own origin, AND browser-extension
+    # origins (iter 30 experiment). The regex matches any `chrome-extension://`
+    # or `moz-extension://` origin — the extension ID is a per-install string
+    # we can't know at compile time, so we trust the scheme + ID-shape. The
+    # actual authorisation gate is still the bearer-token + the loopback bind.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173", "http://127.0.0.1:5173",
                        "http://localhost:3000", f"http://{cfg.host}:{cfg.port}"],
+        allow_origin_regex=r"^(chrome-extension|moz-extension)://[a-z0-9]{1,128}$",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -233,6 +239,11 @@ def create_app(cfg: Optional[SkeinConfig] = None) -> FastAPI:
     app.include_router(chunks_router)
     app.include_router(briefing_router)
     app.include_router(mcp_router)
+    # Iter 30 experiment: browser-extension pairing endpoint. Loopback +
+    # extension-origin gated; the extension calls this once after install
+    # to receive the same bearer token desktop clients use.
+    from .routers.pair import router as pair_router
+    app.include_router(pair_router)
 
     @app.get("/health", response_model=HealthResponse, tags=["meta"])
     async def health() -> HealthResponse:
