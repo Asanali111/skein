@@ -127,24 +127,54 @@
   // Render the daemon's recall response into a tight context block.
   // The response shape from skein.mcp is:
   //   { content: [{ type: "text", text: "<rendered>" }] }
-  // The "rendered" form is already designed for the LLM to read.
+  //
+  // Iter 32 token-waste fix: the daemon now prepends a machine-readable
+  // marker on line 1: `[skein:relevance=high|medium|low|none]`. We parse it
+  // and refuse to inject when relevance is `low` or `none` — those matches
+  // wasted ~3500 tokens per claude.ai prompt before this iter on irrelevant
+  // queries like "weather in california". Strip the marker line either way
+  // so the LLM never sees it.
+  function parseRelevanceAndStrip(rawText) {
+    const text = (rawText || "").trim();
+    const firstNewline = text.indexOf("\n");
+    const firstLine = firstNewline >= 0 ? text.slice(0, firstNewline) : text;
+    const m = /^\[skein:relevance=(high|medium|low|none)\]\s*$/.exec(firstLine.trim());
+    if (!m) {
+      // Older daemon without the marker — treat as "medium" (inject) for
+      // backwards compatibility. The injection threshold is unchanged from
+      // pre-iter-32 behavior so nothing regresses.
+      return { relevance: "medium", body: text };
+    }
+    const body = firstNewline >= 0 ? text.slice(firstNewline + 1).trimStart() : "";
+    return { relevance: m[1], body };
+  }
+
   function formatContextBlock(recallResult, originalQuery) {
     if (!recallResult || !recallResult.content || !recallResult.content[0]) {
-      return null;
+      return { block: null, relevance: "none" };
     }
     const text = recallResult.content[0].text;
-    if (!text || !text.trim()) return null;
-    if (/^no relevant context found/i.test(text.trim())) return null;
-    if (/^no fragment in skein matches/i.test(text.trim())) return null;
+    if (!text || !text.trim()) return { block: null, relevance: "none" };
+    const { relevance, body } = parseRelevanceAndStrip(text);
+    if (relevance === "low" || relevance === "none") {
+      LOG("relevance=" + relevance + " — skipping injection (saves tokens)");
+      return { block: null, relevance };
+    }
+    if (!body || !body.trim()) return { block: null, relevance };
+    if (/^no relevant context found/i.test(body.trim())) return { block: null, relevance: "none" };
+    if (/^no fragment in skein matches/i.test(body.trim())) return { block: null, relevance: "none" };
     // The block is wrapped in [skein context] tags so claude.ai's model
     // can clearly separate injected context from the user's own words.
-    return [
-      `[Skein context — auto-injected by browser extension for query: "${originalQuery.slice(0, 80)}"]`,
-      text.trim(),
-      `[/Skein context]`,
-      "",
-      "",
-    ].join("\n");
+    return {
+      relevance,
+      block: [
+        `[Skein context — auto-injected by browser extension for query: "${originalQuery.slice(0, 80)}", relevance=${relevance}]`,
+        body.trim(),
+        `[/Skein context]`,
+        "",
+        "",
+      ].join("\n"),
+    };
   }
 
   // ---- submit interception --------------------------------------------
@@ -195,16 +225,24 @@
         retriggerSubmit(promptEl);
         return;
       }
-      const block = formatContextBlock(r.result, original);
+      const { block, relevance } = formatContextBlock(r.result, original);
       if (!block) {
-        LOG("no high-signal fragments; passing through");
-        flashToast("Skein: no relevant context found");
+        LOG(`relevance=${relevance} — passing through without injection`);
+        if (relevance === "low" || relevance === "none") {
+          flashToast(`Skein: no relevant context (saved tokens)`);
+          setBadge({
+            kind: "warn",
+            detail: `${cached.activeScope || ""} · no relevant match`,
+          });
+        } else {
+          flashToast("Skein: no relevant context found");
+        }
         retriggerSubmit(promptEl);
         return;
       }
-      LOG("injecting", block.length, "chars of context");
+      LOG("injecting", block.length, "chars of context, relevance=" + relevance);
       setPromptText(promptEl, block + original);
-      flashToast(`Skein → injected ${block.split("\n").length} lines`);
+      flashToast(`Skein → injected (relevance=${relevance})`);
       // Wait a tick for React to re-render, then submit.
       setTimeout(() => retriggerSubmit(promptEl), 80);
     } catch (err) {
