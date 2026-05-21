@@ -87,10 +87,14 @@ class TestRecentWritesByTool:
         yield s
         s.close()
 
-    def _seed_fragment(self, st, *, tool: str, scope_id: str, owner_id: str):
+    def _seed_fragment(self, st, *, tool: str, scope_id: str, owner_id: str,
+                       suffix: str = ""):
+        # Iter 31: dedupe now short-circuits identical (scope, type, tool,
+        # content) writes. Each call must use unique content to actually
+        # produce a new fragment — exercise that with a suffix.
         from skein.models import FragmentCreate
         st.create_fragment(FragmentCreate(
-            type="fact", content=f"thing from {tool}",
+            type="fact", content=f"thing from {tool} {suffix}".strip(),
             scope_id=scope_id, owner_id=owner_id,
             tags=[], confidence=0.9,
             created_by_tool=tool,
@@ -105,8 +109,13 @@ class TestRecentWritesByTool:
             handle="project:test", type="project", name="test",
             owner_id=owner.id,
         ))
-        for tool in ("claude-code", "claude-code", "claude-code", "cursor", "cursor"):
-            self._seed_fragment(real_storage, tool=tool,
+        # Each entry must have unique content because of iter-31 dedupe.
+        seeds = [
+            ("claude-code", "a"), ("claude-code", "b"), ("claude-code", "c"),
+            ("cursor", "x"), ("cursor", "y"),
+        ]
+        for tool, suffix in seeds:
+            self._seed_fragment(real_storage, tool=tool, suffix=suffix,
                                 scope_id=scope.id, owner_id=owner.id)
         result = real_storage.recent_writes_by_tool(hours=24)
         assert result["claude-code"] == 3

@@ -55,6 +55,19 @@ DEFAULTS: dict[str, Any] = {
     # Iter 28 boot-perf: code + docs scanner moved off the `skein up` hot
     # path into a daemon background sweep so warm boot hits <2 s.
     "passive_scan_interval": 300,           # seconds between scanner+docs sweeps
+    # Iter 31 efficiency: how often the daemon checks whether the
+    # FastembedProvider has been idle long enough to drop its ONNX
+    # runtime (saves ~200 MB resident memory during inactive periods).
+    # The idle window itself is the provider's _IDLE_UNLOAD_SECONDS,
+    # overridable via SKEIN_FASTEMBED_IDLE_SECONDS — this knob is just
+    # the polling cadence.
+    "embedding_idle_check_interval": 60,
+    # Iter 31 (Q-05 phase 3): how often the daemon nudges fragment.value
+    # toward its recall-hits-derived target. 6h is slow enough that a
+    # single noisy hour doesn't shift the corpus, fast enough that a week
+    # of real usage materially re-ranks. Override via env var if you want
+    # faster feedback during testing.
+    "value_decay_interval": 21600,  # 6 hours
 }
 
 
@@ -87,6 +100,8 @@ class SkeinConfig:
         self.inbox_auto_approve_threshold: float = float(merged["inbox_auto_approve_threshold"])
         self.inbox_auto_reject_days: int = int(merged["inbox_auto_reject_days"])
         self.passive_scan_interval: int = int(merged["passive_scan_interval"])
+        self.embedding_idle_check_interval: int = int(merged["embedding_idle_check_interval"])
+        self.value_decay_interval: int = int(merged["value_decay_interval"])
         # Drop legacy embedding_dimension if it crept in — dimension is
         # now read from the provider class so a stale 768 can't silently
         # zero out 384-dim fastembed vectors.

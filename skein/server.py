@@ -128,6 +128,18 @@ async def lifespan(app: FastAPI):
     task5 = asyncio.create_task(_passive_scan_loop(
         cfg.db_path, cfg, provider, cfg.passive_scan_interval,
     ))
+    # Iter 31: drop the ONNX runtime when nobody has called embed for
+    # 10 minutes. Saves ~200 MB resident memory during inactive periods.
+    # Reload on next call is ~200 ms (model cached in ~/.cache/fastembed).
+    task6 = asyncio.create_task(_embedding_idle_unload_loop(
+        provider, cfg.embedding_idle_check_interval,
+    ))
+    # Iter 31 (Q-05 phase 3): periodically nudge fragment.value toward
+    # base + 0.05*log(recall_hits) so fragments LLMs actually use rise
+    # organically; ones that go untouched fade.
+    task7 = asyncio.create_task(_value_decay_loop(
+        cfg.db_path, cfg.value_decay_interval,
+    ))
 
     # Common setup for the two passive watchers — both need their own SQLite
     # handle per poll and the local-user identity.
@@ -186,6 +198,8 @@ async def lifespan(app: FastAPI):
     task3.cancel()
     task4.cancel()
     task5.cancel()
+    task6.cancel()
+    task7.cancel()
     warmup_task.cancel()
     for w in (git_watcher, transcript_watcher):
         if w is not None:
@@ -290,29 +304,33 @@ async def _agents_md_sync_loop(db_path: str, daemon_url: str, interval: int) -> 
     """ADR-002 / iter 26: replace `skein sync` with a daemon-side regen.
 
     For each registered project, render AGENTS.md, hash the bytes, and only
-    write if the hash differs from what's on disk. Opens its own Storage
-    handle per sweep so the loop is independent of the lifespan-managed
-    primary connection.
+    write if the hash differs from what's on disk.
+
+    Iter 31: long-lived Storage handle reused across sweeps (was: fresh
+    Storage per sweep, ~4 sqlite open/close per minute combined with the
+    other loops). Saves a small RAM + file-descriptor amount and a handful
+    of milliseconds per iteration. Closes on cancellation only.
     """
     from .agents_md import sync_agents_md_for_project
     from .projects import list_projects
 
-    while True:
-        await asyncio.sleep(interval)
-        try:
-            from pathlib import Path
-            projects = list_projects()
-        except Exception as e:
-            logger.warning("agents_md sync: list_projects failed: %s", e)
-            continue
-        if not projects:
-            continue
+    sweep_storage: Optional[Storage] = None
+    try:
         try:
             sweep_storage = Storage(db_path)
         except Exception as e:
             logger.warning("agents_md sync: open storage failed: %s", e)
-            continue
-        try:
+            return
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                from pathlib import Path
+                projects = list_projects()
+            except Exception as e:
+                logger.warning("agents_md sync: list_projects failed: %s", e)
+                continue
+            if not projects:
+                continue
             for project in projects:
                 try:
                     root = Path(project.root)
@@ -328,8 +346,12 @@ async def _agents_md_sync_loop(db_path: str, daemon_url: str, interval: int) -> 
                     logger.warning(
                         "agents_md sync failed for %s: %s", project.scope, e,
                     )
-        finally:
-            sweep_storage.close()
+    finally:
+        if sweep_storage is not None:
+            try:
+                sweep_storage.close()
+            except Exception:
+                pass
 
 
 async def _inbox_auto_approve_loop(db_path: str, cfg, provider, interval: int) -> None:
@@ -337,6 +359,9 @@ async def _inbox_auto_approve_loop(db_path: str, cfg, provider, interval: int) -
     sweep. Anything above the confidence threshold gets promoted to a real
     fragment; anything older than ``inbox_auto_reject_days`` that's still
     pending gets marked rejected so the queue self-drains.
+
+    Iter 31: long-lived Storage handle (was: fresh per sweep). See
+    _agents_md_sync_loop for the rationale.
     """
     from datetime import datetime, timedelta, timezone
 
@@ -344,84 +369,90 @@ async def _inbox_auto_approve_loop(db_path: str, cfg, provider, interval: int) -
     from .models import CommitCreate, FragmentCreate, IdentityCreate
     from .auth import token_prefix as _tp
 
-    while True:
-        await asyncio.sleep(interval)
+    sweep_storage: Optional[Storage] = None
+    try:
         try:
             sweep_storage = Storage(db_path)
         except Exception as e:
             logger.warning("inbox auto-approve: open storage failed: %s", e)
-            continue
-        try:
-            candidates = sweep_storage.list_extraction_candidates(limit=500)
-            if not candidates:
-                continue
-            owner = sweep_storage.get_or_create_identity(IdentityCreate(
-                handle=f"user:{_tp(cfg.bearer_token)}",
-                type="user", name="local-user",
-            ))
-            promote_threshold = cfg.inbox_auto_approve_threshold
-            reject_cutoff = datetime.now(timezone.utc) - timedelta(
-                days=cfg.inbox_auto_reject_days,
-            )
-            promoted = 0
-            rejected = 0
-            for c in candidates:
-                created_raw = c.get("created_at") or ""
-                normalised = created_raw.replace(" ", "T", 1).replace("Z", "+00:00")
-                try:
-                    ts = datetime.fromisoformat(normalised)
-                    if ts.tzinfo is None:
-                        ts = ts.replace(tzinfo=timezone.utc)
-                except ValueError:
-                    ts = None
-                # Promote high-confidence
-                if c["confidence"] >= promote_threshold:
-                    try:
-                        commit = sweep_storage.create_commit(CommitCreate(
-                            author_id=owner.id, scope_id=c["scope_id"],
-                            message=f"[auto-approve] {c['content'][:60]}",
-                        ))
-                        import json as _json
-                        emb_bytes = None
-                        try:
-                            vec = provider.embed_one(c["content"])
-                            emb_bytes = vec_to_bytes(vec)
-                        except Exception:
-                            pass
-                        frag = sweep_storage.create_fragment(
-                            FragmentCreate(
-                                content=c["content"], type=c["type"],
-                                scope_id=c["scope_id"], owner_id=owner.id,
-                                territory=c.get("territory"),
-                                tags=_json.loads(c.get("tags") or "[]"),
-                                created_by_tool=c["source_tool"],
-                                extraction_method=c["source_tool"],
-                                extraction_confidence=c["confidence"],
-                                metadata={"promoted_via": "inbox-auto-approve"},
-                            ),
-                            commit_id=commit.id, embedding=emb_bytes,
-                        )
-                        sweep_storage.mark_candidate_status(
-                            c["id"], "approved", promoted_fragment_id=frag.id,
-                        )
-                        promoted += 1
-                    except Exception as e:
-                        logger.warning(
-                            "inbox auto-approve: promote %s failed: %s",
-                            c["id"][:8], e,
-                        )
-                # Reject anything too old that didn't clear the threshold.
-                elif ts is not None and ts < reject_cutoff:
-                    if sweep_storage.mark_candidate_status(c["id"], "rejected"):
-                        rejected += 1
-            if promoted or rejected:
-                logger.info(
-                    "inbox sweep: promoted=%d rejected=%d", promoted, rejected,
+            return
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                candidates = sweep_storage.list_extraction_candidates(limit=500)
+                if not candidates:
+                    continue
+                owner = sweep_storage.get_or_create_identity(IdentityCreate(
+                    handle=f"user:{_tp(cfg.bearer_token)}",
+                    type="user", name="local-user",
+                ))
+                promote_threshold = cfg.inbox_auto_approve_threshold
+                reject_cutoff = datetime.now(timezone.utc) - timedelta(
+                    days=cfg.inbox_auto_reject_days,
                 )
-        except Exception as e:
-            logger.warning("inbox auto-approve loop error: %s", e)
-        finally:
-            sweep_storage.close()
+                promoted = 0
+                rejected = 0
+                for c in candidates:
+                    created_raw = c.get("created_at") or ""
+                    normalised = created_raw.replace(" ", "T", 1).replace("Z", "+00:00")
+                    try:
+                        ts = datetime.fromisoformat(normalised)
+                        if ts.tzinfo is None:
+                            ts = ts.replace(tzinfo=timezone.utc)
+                    except ValueError:
+                        ts = None
+                    # Promote high-confidence
+                    if c["confidence"] >= promote_threshold:
+                        try:
+                            commit = sweep_storage.create_commit(CommitCreate(
+                                author_id=owner.id, scope_id=c["scope_id"],
+                                message=f"[auto-approve] {c['content'][:60]}",
+                            ))
+                            import json as _json
+                            emb_bytes = None
+                            try:
+                                vec = provider.embed_one(c["content"])
+                                emb_bytes = vec_to_bytes(vec)
+                            except Exception:
+                                pass
+                            frag = sweep_storage.create_fragment(
+                                FragmentCreate(
+                                    content=c["content"], type=c["type"],
+                                    scope_id=c["scope_id"], owner_id=owner.id,
+                                    territory=c.get("territory"),
+                                    tags=_json.loads(c.get("tags") or "[]"),
+                                    created_by_tool=c["source_tool"],
+                                    extraction_method=c["source_tool"],
+                                    extraction_confidence=c["confidence"],
+                                    metadata={"promoted_via": "inbox-auto-approve"},
+                                ),
+                                commit_id=commit.id, embedding=emb_bytes,
+                            )
+                            sweep_storage.mark_candidate_status(
+                                c["id"], "approved", promoted_fragment_id=frag.id,
+                            )
+                            promoted += 1
+                        except Exception as e:
+                            logger.warning(
+                                "inbox auto-approve: promote %s failed: %s",
+                                c["id"][:8], e,
+                            )
+                    # Reject anything too old that didn't clear the threshold.
+                    elif ts is not None and ts < reject_cutoff:
+                        if sweep_storage.mark_candidate_status(c["id"], "rejected"):
+                            rejected += 1
+                if promoted or rejected:
+                    logger.info(
+                        "inbox sweep: promoted=%d rejected=%d", promoted, rejected,
+                    )
+            except Exception as e:
+                logger.warning("inbox auto-approve loop error: %s", e)
+    finally:
+        if sweep_storage is not None:
+            try:
+                sweep_storage.close()
+            except Exception:
+                pass
 
 
 async def _passive_scan_loop(db_path: str, cfg, provider, interval: int) -> None:
@@ -453,19 +484,25 @@ async def _passive_scan_loop(db_path: str, cfg, provider, interval: int) -> None
     # an empty `recall` for 5+ s after `skein up` returned. Cold-start
     # corpus (docs scan, scanner facts) lands inside the first second now.
     await asyncio.sleep(min(interval, 1))
-    while True:
+    # Iter 31: long-lived Storage handle, not per-project + per-sweep.
+    sweep_storage: Optional[Storage] = None
+    try:
         try:
-            projects = list_projects()
+            sweep_storage = Storage(db_path)
         except Exception as e:
-            logger.warning("passive scan: list_projects failed: %s", e)
-            projects = []
-        for project in projects:
+            logger.warning("passive scan: open storage failed: %s", e)
+            return
+        while True:
             try:
-                root = Path(project.root)
-                if not root.is_dir():
-                    continue
-                sweep_storage = Storage(db_path)
+                projects = list_projects()
+            except Exception as e:
+                logger.warning("passive scan: list_projects failed: %s", e)
+                projects = []
+            for project in projects:
                 try:
+                    root = Path(project.root)
+                    if not root.is_dir():
+                        continue
                     scope_obj = sweep_storage.get_scope(project.scope)
                     if not scope_obj:
                         continue
@@ -487,10 +524,133 @@ async def _passive_scan_loop(db_path: str, cfg, provider, interval: int) -> None
                             scope_id=scope_obj.id, owner_id=owner.id,
                             source_tool="docs-scanner",
                         )
-                finally:
-                    sweep_storage.close()
-            except Exception as e:
-                logger.warning(
-                    "passive scan failed for %s: %s", project.scope, e,
-                )
+                except Exception as e:
+                    logger.warning(
+                        "passive scan failed for %s: %s", project.scope, e,
+                    )
+            await asyncio.sleep(interval)
+    finally:
+        if sweep_storage is not None:
+            try:
+                sweep_storage.close()
+            except Exception:
+                pass
+
+
+async def _embedding_idle_unload_loop(provider, interval: int) -> None:
+    """Iter 31: periodically check whether the embedding provider has
+    been idle long enough to release the ONNX runtime.
+
+    Only ``FastembedProvider`` implements ``idle_check_and_unload``; for
+    every other provider (bm25 / openai / hash) this loop is a cheap
+    every-N-seconds no-op. Wrapped in try/except so a buggy provider
+    can't take the loop down.
+    """
+    check_fn = getattr(provider, "idle_check_and_unload", None)
+    if check_fn is None:
+        # Provider doesn't support idle unload — exit cleanly.
+        return
+    while True:
         await asyncio.sleep(interval)
+        try:
+            check_fn()
+        except Exception:
+            logger.debug("embedding idle-unload check failed", exc_info=True)
+
+
+async def _value_decay_loop(db_path: str, interval: int) -> None:
+    """Iter 31 (Q-05 phase 3): drift fragment.value toward a target
+    derived from behavioural recall_hits + a recency penalty.
+
+    Per fragment (only the recently-recalled subset — partial-indexed
+    via idx_fragments_recalled):
+      target = clamp(base + 0.05 * log1p(recall_hits) - 0.02 * weeks_since,
+                     0.05, 1.0)
+      new    = value + 0.20 * (target - value)   # EMA, slow drift
+
+    Skips:
+      - permanent fragments (the user explicitly pinned them)
+      - value == 1.0 with metadata.pinned == true (boost flag)
+      - rows with recall_hits == 0 (nothing to drift them with yet)
+
+    SQLite doesn't natively expose log1p — we use a Taylor-series
+    approximation for small recall_hits and a clamp for the rest. The
+    loop also batches all updates into a single transaction per sweep.
+
+    Failures are logged and the loop continues — never wedge the daemon.
+    """
+    import math
+    sweep_storage: Optional[Storage] = None
+    try:
+        try:
+            sweep_storage = Storage(db_path)
+        except Exception as e:
+            logger.warning("value_decay: open storage failed: %s", e)
+            return
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                # Only touch fragments that have been recalled at least
+                # once — the rest stay at their base value and the decay
+                # loop has nothing to add. The partial idx keeps this
+                # cheap even on big stores.
+                rows = sweep_storage._conn.execute(
+                    """SELECT id, value, recall_hits, last_recalled_at,
+                              metadata, permanent
+                       FROM fragments
+                       WHERE recall_hits > 0 AND is_stale = 0"""
+                ).fetchall()
+                from datetime import datetime, timezone
+                now = datetime.now(timezone.utc)
+                updates: list[tuple[float, str]] = []
+                for row in rows:
+                    if row["permanent"]:
+                        continue
+                    try:
+                        import json as _json
+                        md = _json.loads(row["metadata"] or "{}")
+                    except Exception:
+                        md = {}
+                    if row["value"] >= 1.0 and md.get("pinned"):
+                        continue
+                    hits = int(row["recall_hits"] or 0)
+                    boost = 0.05 * math.log1p(hits)
+                    # Weeks since last_recalled_at — tiny penalty so a
+                    # high-hits fragment that hasn't been touched in a
+                    # month gently drifts down.
+                    weeks_since = 0.0
+                    if row["last_recalled_at"]:
+                        try:
+                            raw = row["last_recalled_at"].replace(" ", "T", 1)
+                            if "+" not in raw:
+                                raw += "+00:00"
+                            last = datetime.fromisoformat(raw)
+                            weeks_since = max(
+                                0.0,
+                                (now - last).total_seconds() / (7 * 86400.0),
+                            )
+                        except Exception:
+                            weeks_since = 0.0
+                    base = 0.50  # neutral default — could derive from value.py
+                    target = max(0.05, min(1.0, base + boost - 0.02 * weeks_since))
+                    new = row["value"] + 0.20 * (target - row["value"])
+                    new = max(0.05, min(1.0, new))
+                    if abs(new - row["value"]) > 0.005:
+                        updates.append((new, row["id"]))
+                if updates:
+                    sweep_storage._conn.executemany(
+                        "UPDATE fragments SET value = ? WHERE id = ?",
+                        updates,
+                    )
+                    logger.info(
+                        "value_decay: nudged %d fragments toward "
+                        "behavioural target", len(updates),
+                    )
+            except Exception:
+                logger.warning("value_decay loop error", exc_info=True)
+    finally:
+        if sweep_storage is not None:
+            try:
+                sweep_storage.close()
+            except Exception:
+                pass
