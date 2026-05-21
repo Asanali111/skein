@@ -43,6 +43,12 @@ class Storage:
 
     def __init__(self, db_path: str) -> None:
         self.db_path = db_path
+        # Iter 31: per-instance id namespaces the retrieval recall cache so
+        # ephemeral test adapters and the daemon's primary Storage don't
+        # share keys. Without this, a `recall(query, scope)` cached against
+        # one Storage instance would be returned for the same query
+        # against a completely different Storage on the same scope handle.
+        self.instance_id = uuid.uuid4().hex
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(
             db_path,
@@ -507,6 +513,43 @@ class Storage:
                 datetime.now(timezone.utc) + timedelta(seconds=data.ttl_seconds)
             ).isoformat()
 
+        # Iter 31: dedupe shortcut for explicit writes. Compute a content
+        # hash; if an identical fragment already exists in this scope, bump
+        # its value (the "this matters again" signal) and return without
+        # inserting a duplicate row. Passive-extracted fragments
+        # (extraction_method != 'explicit') already dedupe via the inbox's
+        # uq_candidates_dedup constraint, so we skip them here to keep that
+        # path unchanged.
+        method = (data.extraction_method or "explicit").lower()
+        dedupe_key: Optional[str] = None
+        if method == "explicit":
+            import hashlib
+            tool = (data.created_by_tool or "").lower()
+            seed = f"{data.scope_id}|{data.type}|{tool}|{data.content}".encode("utf-8")
+            dedupe_key = hashlib.sha256(seed).hexdigest()[:32]
+            existing = self._conn.execute(
+                "SELECT id FROM fragments WHERE dedupe_key = ? "
+                "AND is_stale = 0 LIMIT 1",
+                (dedupe_key,),
+            ).fetchone()
+            if existing:
+                # Re-assert: nudge value + refresh updated_at, return cached.
+                self._conn.execute(
+                    "UPDATE fragments SET value = MIN(1.0, value + 0.05), "
+                    "updated_at = ? WHERE id = ?",
+                    (now, existing["id"]),
+                )
+                # Invalidate the recall cache for this scope so the bump
+                # surfaces immediately.
+                try:
+                    from . import retrieval as _retr
+                    _retr.invalidate_recall_cache(data.scope_id)
+                except Exception:
+                    pass
+                hit = self.get_fragment(existing["id"])
+                if hit is not None:
+                    return hit
+
         # Iter 25 (Q-05 phases 1+2): score the fragment's recall-time value
         # from provenance + type + content. Persisted so retrieval can apply
         # it without a recompute per query.
@@ -518,6 +561,22 @@ class Storage:
             metadata=data.metadata,
         )
 
+        # Iter 31: soft-warn at write time when a fragment's content
+        # exceeds 800 chars. Don't reject — but build the muscle memory
+        # that fragments should be short. Long-form lives in Obsidian or
+        # the commit body. The warning fires only for explicit writes
+        # (passive extraction produces inherently varied content lengths
+        # and is governed by its own confidence threshold).
+        if method == "explicit" and len(data.content or "") > 800:
+            logger.warning(
+                "Fragment exceeds 800-char soft cap (len=%d, type=%s, tool=%s). "
+                "Consider splitting into multiple fragments — long-form context "
+                "lives better in Obsidian or commit bodies. First 80 chars: %r",
+                len(data.content), data.type,
+                data.created_by_tool or "unknown",
+                (data.content or "")[:80],
+            )
+
         self._conn.execute(
             """INSERT INTO fragments
                (id, type, content, scope_id, owner_id, confidence, version,
@@ -525,11 +584,11 @@ class Storage:
                 tags, territory, source_commit_id, metadata, content_embedding,
                 created_by_tool, created_in_session_id, created_against_commit,
                 files_open_at_creation, supersedes_fragment_id,
-                extraction_method, extraction_confidence, value,
+                extraction_method, extraction_confidence, value, dedupe_key,
                 created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 0, NULL,
                        ?, ?, ?, ?, ?,
-                       ?, ?, ?, ?, ?, ?, ?, ?,
+                       ?, ?, ?, ?, ?, ?, ?, ?, ?,
                        ?, ?)""",
             (frag_id, data.type, data.content, data.scope_id, data.owner_id,
              data.confidence, data.ttl_seconds, expires_at,
@@ -541,8 +600,17 @@ class Storage:
              json.dumps(data.files_open_at_creation),
              data.supersedes_fragment_id,
              data.extraction_method, data.extraction_confidence, value,
+             dedupe_key,
              now, now),
         )
+
+        # Iter 31: invalidate the per-scope recall cache so the new write
+        # surfaces immediately. Cheap (in-memory dict scan).
+        try:
+            from . import retrieval as _retr
+            _retr.invalidate_recall_cache(data.scope_id)
+        except Exception:
+            pass
 
         # If this fragment supersedes another, keep the reverse pointer in sync
         # so future queries can walk the chain in either direction.
@@ -626,6 +694,14 @@ class Storage:
                 code="VERSION_CONFLICT",
             )
 
+        # Iter 31: invalidate the recall cache for the updated row's scope
+        # so the change surfaces immediately.
+        try:
+            from . import retrieval as _retr
+            _retr.invalidate_recall_cache(row["scope_id"])
+        except Exception:
+            pass
+
         return self.get_fragment(frag_id)  # type: ignore[return-value]
 
     def get_fragment(self, frag_id: str) -> Optional[Fragment]:
@@ -704,6 +780,25 @@ class Storage:
         if row is None or row[0] is None:
             return None
         return len(row[0]) // 4
+
+    def bump_recall_hits(self, fragment_ids: list[str]) -> None:
+        """Iter 31 (Q-05 phase 3): single batched UPDATE bumping
+        ``recall_hits`` and ``last_recalled_at`` for fragments that just
+        landed in the top-K of a real recall response. Called by
+        ``retrieval.recall`` after building results. Never raises — the
+        caller wraps in try/except so a buggy telemetry call can never
+        break recall.
+        """
+        if not fragment_ids:
+            return
+        placeholders = ",".join("?" * len(fragment_ids))
+        self._conn.execute(
+            f"""UPDATE fragments
+                   SET recall_hits = recall_hits + 1,
+                       last_recalled_at = datetime('now')
+                 WHERE id IN ({placeholders})""",
+            list(fragment_ids),
+        )
 
     def recent_writes_by_tool(self, hours: int = 24) -> dict[str, int]:
         """Iter 29 day-one: return ``{created_by_tool: count}`` for non-stale
@@ -794,11 +889,17 @@ class Storage:
     def keyword_search(self, query: str, scope_ids: list[str],
                         type_filter: Optional[list[str]] = None,
                         include_stale: bool = False,
-                        limit: int = 20) -> list[tuple[str, float]]:
+                        limit: int = 20,
+                        value_floor: float = 0.0) -> list[tuple[str, float]]:
         """Return (fragment_id, bm25_score) pairs ordered by relevance.
 
         BM25 score from FTS5 is negative (more negative = more relevant).
         We negate it so higher = better.
+
+        Iter 31: ``value_floor`` skips low-value rows at the SQL layer
+        (cheap range-scan on idx_fragments_value). Callers pass it
+        through from retrieval.recall (0.15 by default; 0.0 when
+        ``include_stale=True``).
         """
         if not scope_ids:
             return []
@@ -815,6 +916,11 @@ class Storage:
             "AND f.is_stale = 0 "
             "AND (f.expires_at IS NULL OR f.expires_at > datetime('now'))"
         )
+        value_clause = ""
+        value_params: list[Any] = []
+        if value_floor > 0.0:
+            value_clause = "AND f.value >= ?"
+            value_params = [float(value_floor)]
 
         rows = self._conn.execute(
             f"""
@@ -825,10 +931,11 @@ class Storage:
               AND f.scope_id IN ({placeholders})
               {type_filter_clause}
               {stale_clause}
+              {value_clause}
             ORDER BY bm25(fragments_fts)
             LIMIT ?
             """,
-            [_fts_escape(query)] + scope_ids + type_params + [limit],
+            [_fts_escape(query)] + scope_ids + type_params + value_params + [limit],
         ).fetchall()
         return [(row[0], float(row[1])) for row in rows]
 
@@ -841,7 +948,8 @@ class Storage:
                        include_stale: bool = False,
                        limit: int = 20,
                        dimension: int = 768,
-                       batch_size: int = 5000) -> list[tuple[str, float]]:
+                       batch_size: int = 5000,
+                       value_floor: float = 0.0) -> list[tuple[str, float]]:
         """Return (fragment_id, cosine_similarity) ordered by score.
 
         Vectorised: rows are pulled in ``batch_size`` chunks, the embedding
@@ -868,6 +976,15 @@ class Storage:
             "AND is_stale = 0 "
             "AND (expires_at IS NULL OR expires_at > datetime('now'))"
         )
+        # Iter 31: SQL-level value floor — same rationale as keyword_search.
+        # Particularly valuable here because each retained row costs
+        # 4 × dimension bytes through Python's numpy reshape, so dropping
+        # noise early compounds.
+        value_clause = ""
+        value_params: list[Any] = []
+        if value_floor > 0.0:
+            value_clause = "AND value >= ?"
+            value_params = [float(value_floor)]
 
         query_vec = np.frombuffer(query_vec_bytes, dtype=np.float32)
         if len(query_vec) != dimension:
@@ -882,8 +999,9 @@ class Storage:
                 WHERE content_embedding IS NOT NULL
                   AND scope_id IN ({placeholders})
                   {type_filter_clause}
-                  {stale_clause}""",
-            scope_ids + type_params,
+                  {stale_clause}
+                  {value_clause}""",
+            scope_ids + type_params + value_params,
         )
 
         row_bytes = dimension * 4
