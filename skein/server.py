@@ -173,12 +173,24 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Git commit watcher failed to start; skipping.")
 
-    # Transcript watcher (iter 14.2, demoted to opt-in in iter 15): tails
-    # Claude Code JSONL transcripts. Off by default because it produces noise
-    # the inbox has to filter; the git watcher is the better default path.
-    # Enable with: SKEIN_TRANSCRIPT_WATCHER=1
+    # Transcript watcher (iter 14.2 → iter 32 default-on):
+    #   - Default: smart-only mode — only the high-precision (≥0.90 conf)
+    #     patterns fire ("Iter N SHIPPED", "Decided to X", "Concluded that X").
+    #     False-positive rate is near zero, so the captures go straight to
+    #     fragments without polluting the inbox.
+    #   - SKEIN_TRANSCRIPT_WATCHER=loose → run the full pattern set, including
+    #     the lower-confidence "let's use X" / "I prefer X" patterns that
+    #     queue to inbox for review.
+    #   - SKEIN_TRANSCRIPT_WATCHER=off → disable entirely.
     transcript_watcher = None
-    if os.environ.get("SKEIN_TRANSCRIPT_WATCHER") == "1":
+    _twc_mode = os.environ.get("SKEIN_TRANSCRIPT_WATCHER", "smart").lower()
+    if _twc_mode in ("1", "loose"):
+        _smart_only = False
+    elif _twc_mode in ("0", "off", "false", "no"):
+        _smart_only = None  # disabled
+    else:
+        _smart_only = True  # smart (default)
+    if _smart_only is not None:
         try:
             from .transcript_watcher import MultiProjectTranscriptWatcher
             transcript_watcher = MultiProjectTranscriptWatcher(
@@ -186,6 +198,7 @@ async def lifespan(app: FastAPI):
                 provider=provider,
                 poll_interval=3.0,
                 get_owner_id=_get_owner,
+                smart_only=_smart_only,
             )
             transcript_watcher.start()
         except Exception:
