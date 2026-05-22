@@ -2305,14 +2305,113 @@ def doctor(show_perf: bool, do_clean: bool, do_reingest: bool,
                     ),
                     state="ok",
                 )
+                # Oldest pending tells you whether the queue is stuck.
+                oldest_pending = ""
+                try:
+                    row = st._conn.execute(
+                        """SELECT
+                             CAST((julianday('now') - julianday(MIN(created_at))) AS INTEGER) AS d
+                           FROM extraction_candidates
+                           WHERE status = 'pending'"""
+                    ).fetchone()
+                    if row and row["d"] is not None:
+                        oldest_pending = f" (oldest {row['d']}d)"
+                except Exception:
+                    pass
                 ui.step(
                     "Inbox",
                     detail=(
-                        f"{inbox} pending · "
+                        f"{inbox} pending{oldest_pending} · "
                         f"{approved} approved · {rejected} rejected (auto-sweep handles these)"
                     ),
                     state="ok" if inbox < 200 else "warn",
                 )
+
+                # --- Iter 34: "gets-better" indicators ---
+                # Derived purely from existing columns — no new tables.
+                # Three signals that tell the user whether usage is
+                # compounding into better recall over time.
+                try:
+                    # Recall coverage: of the live fragments, how many
+                    # have been touched by at least one recall? Median
+                    # recall_hits across the touched set.
+                    cov = st._conn.execute(
+                        """SELECT
+                             SUM(CASE WHEN recall_hits > 0 THEN 1 ELSE 0 END) AS touched,
+                             COUNT(*) AS live
+                           FROM fragments
+                           WHERE is_stale = 0"""
+                    ).fetchone()
+                    touched = cov["touched"] or 0
+                    live = cov["live"] or 0
+                    coverage_pct = (
+                        (100.0 * touched / live) if live else 0.0
+                    )
+                    # Cheap median: order by recall_hits, pick middle row.
+                    median_hits = 0
+                    if touched:
+                        mh_row = st._conn.execute(
+                            """SELECT recall_hits FROM fragments
+                               WHERE is_stale = 0 AND recall_hits > 0
+                               ORDER BY recall_hits
+                               LIMIT 1 OFFSET ?""",
+                            (max(0, touched // 2),),
+                        ).fetchone()
+                        if mh_row:
+                            median_hits = int(mh_row["recall_hits"] or 0)
+                    # Recalled in the last 7d — how active is the bus?
+                    recent = st._conn.execute(
+                        """SELECT COUNT(*) AS c FROM fragments
+                           WHERE is_stale = 0
+                             AND last_recalled_at IS NOT NULL
+                             AND last_recalled_at >= datetime('now', '-7 days')"""
+                    ).fetchone()
+                    recent_recalled = int(recent["c"] or 0)
+                    ui.step(
+                        "Recall coverage (7d)",
+                        detail=(
+                            f"{touched}/{live} fragments ever recalled "
+                            f"({coverage_pct:.0f}%) · median {median_hits} "
+                            f"hits/fragment · {recent_recalled} active in 7d"
+                        ),
+                        state="ok",
+                    )
+
+                    # Inbox drain rate (7d window). Drain rate matters more
+                    # than depth — a fast queue with 200 items is healthier
+                    # than a stalled queue with 20.
+                    drain = st._conn.execute(
+                        """SELECT
+                             SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS appr,
+                             SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rej,
+                             SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pen
+                           FROM extraction_candidates
+                           WHERE created_at >= datetime('now', '-7 days')"""
+                    ).fetchone()
+                    d_appr = int(drain["appr"] or 0)
+                    d_rej = int(drain["rej"] or 0)
+                    d_pen = int(drain["pen"] or 0)
+                    total7 = d_appr + d_rej + d_pen
+                    if total7 == 0:
+                        ui.step(
+                            "Inbox drain (7d)",
+                            detail="no captures in window (idle queue)",
+                            state="ok",
+                        )
+                    else:
+                        drained_pct = 100.0 * (d_appr + d_rej) / total7
+                        ui.step(
+                            "Inbox drain (7d)",
+                            detail=(
+                                f"{d_appr} approved · {d_rej} rejected · "
+                                f"{d_pen} still pending of {total7} captured "
+                                f"({drained_pct:.0f}% drained)"
+                            ),
+                            state="ok" if drained_pct >= 70 else "warn",
+                        )
+                except Exception:
+                    # Read-only diagnostics — never wedge doctor.
+                    pass
             finally:
                 st.close()
         except Exception:
