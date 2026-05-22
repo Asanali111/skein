@@ -1204,10 +1204,7 @@ def connect(
     # uninstall path stays consistent. disconnect() will be marked hidden
     # in this iter and deleted in a follow-up after a week of dogfooding.
     if do_remove:
-        ctx = click.Context(disconnect)
-        ctx.invoke(
-            disconnect, client_id=client_id, all_connected=all_detected,
-        )
+        _disconnect_impl(client_id=client_id, all_connected=all_detected)
         return
     from . import clients as clients_mod
     from . import connections as conns
@@ -1361,11 +1358,7 @@ def connect(
         console.print(f"  {ui.mark('skip')} [dim]{item}[/dim]")
 
 
-@main.command(hidden=True)
-@click.argument("client_id", required=False)
-@click.option("--all", "all_connected", is_flag=True, default=False,
-              help="Disconnect every currently connected client.")
-def disconnect(client_id: Optional[str], all_connected: bool) -> None:
+def _disconnect_impl(client_id: Optional[str], all_connected: bool) -> None:
     """Remove Skein from one or all connected LLM tools.
 
     \b
@@ -1417,6 +1410,14 @@ def disconnect(client_id: Optional[str], all_connected: bool) -> None:
         except Exception as e:
             err_console.print(f"  {ui.mark('err')} {cid}: {e}")
     ui.blank()
+
+
+@main.command(hidden=True)
+@click.argument("client_id", required=False)
+@click.option("--all", "all_connected", is_flag=True, default=False,
+              help="Disconnect every currently connected client.")
+def disconnect(client_id: Optional[str], all_connected: bool) -> None:
+    _disconnect_impl(client_id, all_connected)
 
 
 @main.command("clients", hidden=True)
@@ -1671,17 +1672,7 @@ def _parse_since(raw: str) -> str:
     )
 
 
-@main.command(hidden=True)
-@click.argument("since_arg")
-@click.option("--scope", default=None, help="Scope handle (default from config).")
-@click.option("--type", "types", multiple=True,
-              help="Filter by fragment type (repeatable).")
-@click.option("--exclude-tool",
-              help="Hide fragments whose created_by_tool equals this. "
-                   "Use to see what OTHER tools wrote (e.g. --exclude-tool claude_code).")
-@click.option("--limit", "-n", default=50, show_default=True)
-@click.option("--json", "output_json", is_flag=True, default=False)
-def since(
+def _since_impl(
     since_arg: str,
     scope: Optional[str],
     types: tuple,
@@ -1776,6 +1767,27 @@ def since(
         f"in [cyan]{scope_handle}[/cyan][/dim]"
     )
     ui.blank()
+
+
+@main.command(hidden=True)
+@click.argument("since_arg")
+@click.option("--scope", default=None, help="Scope handle (default from config).")
+@click.option("--type", "types", multiple=True,
+              help="Filter by fragment type (repeatable).")
+@click.option("--exclude-tool",
+              help="Hide fragments whose created_by_tool equals this. "
+                   "Use to see what OTHER tools wrote (e.g. --exclude-tool claude_code).")
+@click.option("--limit", "-n", default=50, show_default=True)
+@click.option("--json", "output_json", is_flag=True, default=False)
+def since(
+    since_arg: str,
+    scope: Optional[str],
+    types: tuple,
+    exclude_tool: Optional[str],
+    limit: int,
+    output_json: bool,
+) -> None:
+    _since_impl(since_arg, scope, types, exclude_tool, limit, output_json)
 
 
 # ---------------------------------------------------------------------------
@@ -2122,11 +2134,8 @@ def briefing(scope: Optional[str], since_arg: Optional[str], output_json: bool) 
     # display stays consistent. since() will be marked hidden in this iter
     # and deleted in a follow-up after a week of dogfooding.
     if since_arg is not None:
-        ctx = click.Context(since)
-        ctx.invoke(
-            since, since_arg=since_arg, scope=scope, types=(),
-            exclude_tool=None, limit=50, output_json=output_json,
-        )
+        _since_impl(since_arg=since_arg, scope=scope, types=(),
+                    exclude_tool=None, limit=50, output_json=output_json)
         return
     from . import ui
     scope_handle = _resolve_scope(scope)
@@ -2338,12 +2347,7 @@ def _preview_user_prompt(storage, scope_obj, scope_handle: str,
 # gc — interactive cleanup of junk scopes and fragments
 # ---------------------------------------------------------------------------
 
-@main.command(hidden=True)
-@click.option("--yes", "-y", is_flag=True, default=False,
-              help="Skip confirmation prompts (CI use).")
-@click.option("--dry-run", is_flag=True, default=False,
-              help="Show what would be deleted without doing it.")
-def gc(yes: bool, dry_run: bool) -> None:
+def _gc_impl(yes: bool, dry_run: bool) -> None:
     """Find and remove junk scopes and useless fragments.
 
     \b
@@ -2480,6 +2484,15 @@ def gc(yes: bool, dry_run: bool) -> None:
         storage.close()
 
 
+@main.command(hidden=True)
+@click.option("--yes", "-y", is_flag=True, default=False,
+              help="Skip confirmation prompts (CI use).")
+@click.option("--dry-run", is_flag=True, default=False,
+              help="Show what would be deleted without doing it.")
+def gc(yes: bool, dry_run: bool) -> None:
+    _gc_impl(yes, dry_run)
+
+
 # ---------------------------------------------------------------------------
 # events — recent activity stream (commits + recently-stored fragments)
 # ---------------------------------------------------------------------------
@@ -2544,21 +2557,17 @@ def _doctor_clean() -> None:
     gc handler so the cleanup heuristics live in one place — when `gc`
     is eventually deleted, only this helper moves with it.
     """
-    ctx = click.Context(gc)
-    ctx.invoke(gc, yes=False, dry_run=False)
+    _gc_impl(yes=False, dry_run=False)
 
 
 def _doctor_reingest() -> None:
     """ADR-002: replace `skein ingest .` invocation. Delegates to the
     existing ingest handler with the conservative defaults a re-ingest
     needs (no --reset, no --prune)."""
-    ctx = click.Context(ingest)
-    ctx.invoke(
-        ingest, path=".", scope=None, source_root=None,
-        chunk_lines=80, overlap_lines=10, include_exts=None,
-        extra_excludes=(), max_bytes=None,
-        prune=False, reset=False, dry_run=False, quiet=False,
-    )
+    _ingest_impl(path=".", scope=None, source_root=None,
+                 chunk_lines=80, overlap_lines=10, include_exts=None,
+                 extra_excludes=(), max_bytes=None,
+                 prune=False, reset=False, dry_run=False, quiet=False)
 
 
 def _doctor_reindex_embeddings() -> None:
@@ -3278,30 +3287,7 @@ def hooks_list(repo: Optional[str]) -> None:
 # ingest — codebase / document RAG
 # ---------------------------------------------------------------------------
 
-@main.command(hidden=True)
-@click.argument("path", type=click.Path(exists=True, file_okay=False, dir_okay=True))
-@click.option("--scope", default=None, help="Target scope (default from config).")
-@click.option("--root", "source_root", default=None,
-              help="Stable label for the ingest base. Defaults to PATH's basename.")
-@click.option("--chunk-lines", default=80, show_default=True, type=int,
-              help="Lines per chunk window.")
-@click.option("--overlap-lines", default=10, show_default=True, type=int,
-              help="Line overlap between adjacent windows.")
-@click.option("--include", "include_exts", default=None,
-              help="Comma-separated extensions to include (e.g. .py,.ts,.md).")
-@click.option("--exclude", "extra_excludes", multiple=True,
-              help="Glob patterns / dir names to skip (repeatable).")
-@click.option("--max-bytes", default=None, type=int,
-              help="Max bytes per file. Files larger are skipped.")
-@click.option("--prune", is_flag=True, default=False,
-              help="Delete chunks whose source file no longer exists.")
-@click.option("--reset", is_flag=True, default=False,
-              help="Delete all chunks under this root before re-ingesting.")
-@click.option("--dry-run", is_flag=True, default=False,
-              help="Walk and chunk but do not write anything.")
-@click.option("--quiet", "-q", is_flag=True, default=False,
-              help="Suppress per-file progress.")
-def ingest(
+def _ingest_impl(
     path: str,
     scope: Optional[str],
     source_root: Optional[str],
@@ -3445,6 +3431,46 @@ def ingest(
                 console.print(f"  [dim]• {s}[/dim]")
     finally:
         storage.close()
+
+
+@main.command(hidden=True)
+@click.argument("path", type=click.Path(exists=True, file_okay=False, dir_okay=True))
+@click.option("--scope", default=None, help="Target scope (default from config).")
+@click.option("--root", "source_root", default=None,
+              help="Stable label for the ingest base. Defaults to PATH's basename.")
+@click.option("--chunk-lines", default=80, show_default=True, type=int,
+              help="Lines per chunk window.")
+@click.option("--overlap-lines", default=10, show_default=True, type=int,
+              help="Line overlap between adjacent windows.")
+@click.option("--include", "include_exts", default=None,
+              help="Comma-separated extensions to include (e.g. .py,.ts,.md).")
+@click.option("--exclude", "extra_excludes", multiple=True,
+              help="Glob patterns / dir names to skip (repeatable).")
+@click.option("--max-bytes", default=None, type=int,
+              help="Max bytes per file. Files larger are skipped.")
+@click.option("--prune", is_flag=True, default=False,
+              help="Delete chunks whose source file no longer exists.")
+@click.option("--reset", is_flag=True, default=False,
+              help="Delete all chunks under this root before re-ingesting.")
+@click.option("--dry-run", is_flag=True, default=False,
+              help="Walk and chunk but do not write anything.")
+@click.option("--quiet", "-q", is_flag=True, default=False,
+              help="Suppress per-file progress.")
+def ingest(
+    path: str,
+    scope: Optional[str],
+    source_root: Optional[str],
+    chunk_lines: int,
+    overlap_lines: int,
+    include_exts: Optional[str],
+    extra_excludes: tuple,
+    max_bytes: Optional[int],
+    prune: bool,
+    reset: bool,
+    dry_run: bool,
+    quiet: bool,
+) -> None:
+    _ingest_impl(path, scope, source_root, chunk_lines, overlap_lines, include_exts, extra_excludes, max_bytes, prune, reset, dry_run, quiet)
 
 
 # ---------------------------------------------------------------------------
