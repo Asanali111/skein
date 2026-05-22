@@ -25,7 +25,8 @@
     "http://127.0.0.1:8766/*",
     "https://claude.ai/*",
     "https://chatgpt.com/*",
-    "https://chat.openai.com/*"
+    "https://chat.openai.com/*",
+    "https://gemini.google.com/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -42,6 +43,13 @@
     {
       "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
       "js": ["content_common.js", "content_chatgpt.js"],
+      "css": ["badge.css"],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["content_common.js", "content_gemini.js"],
       "css": ["badge.css"],
       "run_at": "document_idle",
       "all_frames": false
