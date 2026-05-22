@@ -356,6 +356,51 @@ async def _agents_md_sync_loop(db_path: str, daemon_url: str, interval: int) -> 
                 pass
 
 
+def _inbox_sweep_decision(
+    *,
+    confidence: float,
+    source_tool: str,
+    type_: str,
+    content: str,
+    created_at_ts,
+    promote_threshold: float,
+    reject_cutoff,
+    value_floor: float,
+    floor_prefix: str,
+) -> str:
+    """Iter 34: pure policy gate for one inbox candidate.
+
+    Returns one of ``"promote"``, ``"value_reject"``, ``"reject"``, ``"keep"``.
+    Pulled out of ``_inbox_auto_approve_loop`` so the branching is unit-
+    testable without spinning up the async sweep. The loop calls this and
+    then executes the matching side-effect.
+    """
+    from .value import compute_fragment_value
+    if confidence >= promote_threshold:
+        return "promote"
+    src = (source_tool or "").lower()
+    if (
+        value_floor > 0
+        and floor_prefix
+        and src.startswith(floor_prefix)
+    ):
+        try:
+            v = compute_fragment_value(
+                type=type_ or "fact",
+                content=content or "",
+                extraction_method=source_tool or "",
+                created_by_tool=source_tool,
+                metadata={},
+            )
+        except Exception:
+            v = None
+        if v is not None and v < value_floor:
+            return "value_reject"
+    if created_at_ts is not None and created_at_ts < reject_cutoff:
+        return "reject"
+    return "keep"
+
+
 async def _inbox_auto_approve_loop(db_path: str, cfg, provider, interval: int) -> None:
     """ADR-002 / iter 26: replace `skein inbox auto-approve` with a daemon
     sweep. Anything above the confidence threshold gets promoted to a real
@@ -392,8 +437,11 @@ async def _inbox_auto_approve_loop(db_path: str, cfg, provider, interval: int) -
                 reject_cutoff = datetime.now(timezone.utc) - timedelta(
                     days=cfg.inbox_auto_reject_days,
                 )
+                value_floor = cfg.inbox_auto_reject_value_floor
+                floor_prefix = cfg.inbox_value_floor_tool_prefix
                 promoted = 0
                 rejected = 0
+                value_rejected = 0
                 for c in candidates:
                     created_raw = c.get("created_at") or ""
                     normalised = created_raw.replace(" ", "T", 1).replace("Z", "+00:00")
@@ -403,8 +451,18 @@ async def _inbox_auto_approve_loop(db_path: str, cfg, provider, interval: int) -
                             ts = ts.replace(tzinfo=timezone.utc)
                     except ValueError:
                         ts = None
-                    # Promote high-confidence
-                    if c["confidence"] >= promote_threshold:
+                    decision = _inbox_sweep_decision(
+                        confidence=c["confidence"],
+                        source_tool=c.get("source_tool") or "",
+                        type_=c.get("type") or "fact",
+                        content=c.get("content") or "",
+                        created_at_ts=ts,
+                        promote_threshold=promote_threshold,
+                        reject_cutoff=reject_cutoff,
+                        value_floor=value_floor,
+                        floor_prefix=floor_prefix,
+                    )
+                    if decision == "promote":
                         try:
                             commit = sweep_storage.create_commit(CommitCreate(
                                 author_id=owner.id, scope_id=c["scope_id"],
@@ -439,13 +497,21 @@ async def _inbox_auto_approve_loop(db_path: str, cfg, provider, interval: int) -
                                 "inbox auto-approve: promote %s failed: %s",
                                 c["id"][:8], e,
                             )
-                    # Reject anything too old that didn't clear the threshold.
-                    elif ts is not None and ts < reject_cutoff:
-                        if sweep_storage.mark_candidate_status(c["id"], "rejected"):
+                    elif decision == "value_reject":
+                        if sweep_storage.mark_candidate_status(
+                            c["id"], "rejected",
+                        ):
+                            value_rejected += 1
+                    elif decision == "reject":
+                        if sweep_storage.mark_candidate_status(
+                            c["id"], "rejected",
+                        ):
                             rejected += 1
-                if promoted or rejected:
+                if promoted or rejected or value_rejected:
                     logger.info(
-                        "inbox sweep: promoted=%d rejected=%d", promoted, rejected,
+                        "inbox sweep: promoted=%d rejected=%d "
+                        "value_rejected=%d",
+                        promoted, rejected, value_rejected,
                     )
             except Exception as e:
                 logger.warning("inbox auto-approve loop error: %s", e)
