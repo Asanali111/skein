@@ -1,9 +1,15 @@
 # Skein browser extension — experimental
 
-This is the iter-30 experiment: a browser extension that injects local
-Skein context into prompts on `claude.ai` (chatgpt + gemini come next
-if this proves itself). Lives on the `experiment/browser-extension`
-branch only — does **not** affect the main `skein up` workflow.
+A browser extension that injects local Skein context into prompts on
+**claude.ai**, **chatgpt.com**, and **gemini.google.com**. Lives on
+the `experiment/browser-extension` branch only — does **not** affect
+the main `skein up` workflow.
+
+Iter 30 shipped the claude.ai prototype. Iter 33 extracted the shared
+hot-path logic into `content_common.js` and added content scripts for
+ChatGPT and Gemini. Three sites, one shared core — future relevance /
+recall fixes (like iter 32's token-waste skip) land in one file and
+all three sites inherit.
 
 ## How to test it
 
@@ -52,9 +58,12 @@ branch only — so pairing would fail. Use 8766 for now.
 5. Click **Test recall** to confirm end-to-end works. You should see
    recall results render in the box below.
 
-### 4. Use it on claude.ai
+### 4. Use it on claude.ai / chatgpt.com / gemini.google.com
 
-1. Open `https://claude.ai/new` in a new tab.
+1. Open whichever site you want to test in a new tab:
+   - `https://claude.ai/new`
+   - `https://chatgpt.com/`
+   - `https://gemini.google.com/app`
 2. **Bottom-right corner** — you should see a dark floating badge:
    `● Skein  · project:ameliomar · 129 fragments`.
    Green dot = paired and ready. Yellow = no scope picked (open the
@@ -111,20 +120,19 @@ because the iter-28 perf decision fragment got injected.
 
 ## What's missing
 
-This is a prototype. Known limits:
+This is still a prototype. Known limits:
 
-- **claude.ai only.** chatgpt.com and gemini.google.com need their own
-  content scripts (their DOM is different). Adding them is mostly
-  swapping selectors + a few quirks.
-- **No write-back.** The LLM's response isn't captured anywhere. The
-  next iter adds a "Save to Skein" button on hover over assistant
+- **No write-back.** The LLM's response isn't captured anywhere. A
+  future iter will add a "Save to Skein" button on hover over assistant
   messages.
 - **No streaming-aware feedback.** The "injected" toast disappears
-  after 1.5 s; for long Claude responses you can't go back and see
-  exactly what got injected. (Console logs are the audit trail.)
-- **No host pattern for chatgpt/gemini.** They're commented out in
-  `manifest.json` until we ship their content scripts; adding the
-  patterns would request permissions the user didn't actually grant.
+  after 1.5 s; for long responses you can't go back and see exactly
+  what got injected. (Console logs are the audit trail.)
+- **DOM selector drift.** ChatGPT and Gemini ship UI changes
+  frequently — selectors are written defensively (multiple fallbacks
+  per site) but a hard breaking change will require a selector update.
+  Check the DevTools console for `[skein] prompt element gone` if
+  injection silently stops.
 
 ## What's safe
 
