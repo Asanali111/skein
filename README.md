@@ -101,8 +101,8 @@ To turn it off:
 ```bash
 skein down       # stop the daemon and remove hooks from this project
 skein restart    # restart the daemon
-skein daemon status   # see what's running
-skein daemon logs     # tail the daemon log
+skein status     # see what's running (daemon + clients + counts)
+skein doctor     # deeper diagnostic (logs, value distribution, inbox depth)
 ```
 
 ### After `skein up` — day-to-day usage
@@ -221,7 +221,7 @@ MCP prompt:
 
 ## Autonomous mode
 
-`skein hooks install` turns Skein from "tools the LLM can call" into "context that flows automatically without anyone asking." It writes a small set of files into the current project:
+`skein up` (which also runs on `skein connect`) turns Skein from "tools the LLM can call" into "context that flows automatically without anyone asking." It writes a small set of files into the current project:
 
 | File | Purpose |
 |---|---|
@@ -248,18 +248,19 @@ The hooks talk to the SQLite DB **directly**, so they:
 **Multi-tool scenario:** Open Claude Code in a hook-installed project and ask it to make a decision. Close it. Open Cursor in the same project — it reads `AGENTS.md` (rendered from the same fragments) and reads its rule file (which tells it to `recall` proactively). Cursor sees the decision Claude just made.
 
 ```bash
-# After init + serve + sync, run once per project:
+# Run once per project — installs hooks for every detected client:
 cd ~/Documents/your-project
-skein hooks install --scope project:your-project
+skein up
 
-# Verify what was installed
-skein hooks list
+# What's wired up?
+skein status
 
-# Remove later (preserves any user-added hook entries):
-skein hooks uninstall
+# Disconnect a client (removes the hooks):
+skein connect cursor --remove
+skein connect --all --remove   # disconnect everything
 ```
 
-`--global` adds the same hooks at `~/.claude/settings.json` so they apply across every project (the per-project `.skein/scope` file pins which scope to use).
+`skein up` writes the hooks into `.claude/settings.json` automatically (the per-project `.skein/scope` file pins which scope to use).
 
 ---
 
@@ -269,21 +270,19 @@ Fragments are great for typed context — decisions, requirements, observations.
 
 ### Ingest a codebase
 
+`skein up` runs the initial ingest and registers a file-watcher that
+keeps the chunk index current automatically. The visible knobs:
+
 ```bash
-# Index every supported file under ./src
-skein ingest ./src --scope project:myapp
+# First-time setup: indexes the cwd and starts the watcher.
+skein up
 
-# Filter by extension
-skein ingest . --include .py,.md --scope project:myapp
+# Force a full re-index (replaces the old `skein ingest .`):
+skein doctor --reingest
 
-# Re-index after changes (skips unchanged chunks via content hash)
-skein ingest . --scope project:myapp
-
-# Re-index and remove chunks for files that no longer exist
-skein ingest . --scope project:myapp --prune
-
-# Wipe and rebuild
-skein ingest . --scope project:myapp --reset
+# Re-embed every fragment under the active embedding provider
+# (e.g. after switching from gemini to fastembed):
+skein doctor --reindex-embeddings
 ```
 
 What gets ingested:
@@ -296,34 +295,27 @@ Each file is split into overlapping line windows (default 80 lines, 10-line over
 
 ### Search the ingested code
 
-```bash
-# CLI
-skein search "how does authentication work"
-skein search "rate limit middleware" --language python --limit 5
-skein search "store fragment with embedding" --root skein
+The agent is the canonical caller — the MCP `search_code` tool is what
+Claude Code, Cursor, Codex, etc. invoke directly. Humans see the same
+ranking through the REST endpoint:
 
-# REST
+```bash
+# MCP — Claude Code, Cursor, etc. call this directly
+search_code(query="how does auth work", scope="project:myapp")
+
+# REST (same hybrid pipeline)
 curl -X POST http://127.0.0.1:8765/v1/chunks/search \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"query":"auth bearer","scope":"project:myapp","limit":5}'
-
-# MCP — Claude Code, Cursor, etc. call this directly
-search_code(query="how does auth work", scope="project:myapp")
 ```
 
 Results return file path + line range + the matched chunk content, ranked by hybrid BM25 + vector + RRF.
 
 ### Stats / inspection
 
-```bash
-skein chunks stats --scope project:myapp
-# → 107 chunks across 24 files
-#   By language: python (104), sql (3)
-#   By root: myapp (107)
-
-skein chunks list --scope project:myapp --language python
-skein chunks delete-root old-experiment --scope project:myapp
-```
+Per-scope chunk counts, language breakdown, and root summaries appear
+in `skein doctor` (alongside fragment counts, value distribution, and
+inbox depth). One-off cleanup is `skein doctor --clean`.
 
 ### Why chunks separate from fragments?
 
@@ -423,12 +415,10 @@ pytest tests/ -v
 Scopes form a visibility hierarchy: `public ⊃ org ⊃ team ⊃ project ⊃ personal`.  
 A recall query on `project:foo` returns fragments from that project, its team, org, and public.
 
-```bash
-# Create a scope hierarchy
-skein scope create org:acme --name "Acme Corp"
-skein scope create team:backend --parent org:acme
-skein scope create project:api-service --parent team:backend
-```
+Scopes are inferred automatically — `skein up` picks one from
+`.skein/scope`, the git remote, or the directory name. Sub-scopes
+(`org:`, `team:`) are created by the daemon the first time a fragment
+references them; you never run a `scope create` command.
 
 ---
 
