@@ -674,6 +674,144 @@ def restart() -> None:
             f"See ~/.config/skein/logs/daemon.err"
         )
         sys.exit(1)
+
+
+@main.command()
+@click.option("--check", "check_only", is_flag=True, default=False,
+              help="Only check for an update; don't install anything.")
+def update(check_only: bool) -> None:
+    """Upgrade Skein to the latest version and restart the daemon.
+
+    Detects how Skein was installed (pipx / uv tool / pip) and runs the
+    appropriate upgrade command, then restarts the daemon.
+    """
+    from . import ui
+    from .version_check import check_for_update, _current_version, _fetch_latest
+
+    current = _current_version()
+    ui.blank()
+    console.print(f"  Current version: [bold]{current}[/bold]")
+
+    latest = _fetch_latest()
+    if latest is None:
+        err_console.print(
+            "  [red]✗[/red] Could not reach PyPI. Check your network connection."
+        )
+        sys.exit(1)
+
+    console.print(f"  Latest version:  [bold]{latest}[/bold]")
+
+    from .version_check import _version_tuple
+    if _version_tuple(latest) <= _version_tuple(current):
+        ui.blank()
+        console.print("  [green]Already up to date.[/green]")
+        ui.blank()
+        return
+
+    if check_only:
+        ui.blank()
+        console.print(
+            f"  [yellow]⬆ Update available:[/yellow] {current} → {latest}  "
+            f"[dim](run: skein update)[/dim]"
+        )
+        ui.blank()
+        return
+
+    # Detect install method from the binary path and environment.
+    import shutil
+    skein_bin = shutil.which("skein") or sys.executable
+    skein_path = Path(skein_bin).resolve()
+
+    # Check for editable / dev install (source tree).
+    is_editable = False
+    try:
+        import importlib.metadata as _meta
+        dist = _meta.distribution("skn")
+        direct_url = json.loads(dist.read_text("direct_url.json") or "{}")
+        is_editable = direct_url.get("dir_info", {}).get("editable", False)
+    except Exception:
+        pass
+
+    if is_editable:
+        ui.blank()
+        console.print(
+            "  [yellow]⚠[/yellow] Skein is installed in editable/dev mode.\n"
+            "  Pull the latest changes and restart the daemon:\n"
+            "\n"
+            "    [bold]git pull && skein restart[/bold]\n"
+            "\n"
+            "  If you installed via the TCC workaround (macOS) also run:\n"
+            "    [bold]skein down && rm -rf ~/.skein/source && skein up[/bold]"
+        )
+        ui.blank()
+        return
+
+    # Detect pipx: binary lives inside a pipx venv
+    #   ~/.local/pipx/venvs/skn/bin/skein  or  ~/Library/Application Support/pipx/…
+    is_pipx = "pipx" in str(skein_path) or "pipx" in os.environ.get("PIPX_HOME", "")
+    if not is_pipx:
+        # Secondary check: pipx creates a link under ~/.local/bin
+        try:
+            resolved = skein_path.resolve()
+            is_pipx = "pipx" in str(resolved)
+        except Exception:
+            pass
+
+    # Detect uv tool: binary lives inside ~/.local/share/uv/tools/skn/
+    is_uv_tool = "uv" in str(skein_path) and "tools" in str(skein_path)
+    if not is_uv_tool:
+        try:
+            is_uv_tool = "uv" in str(skein_path.resolve()) and "tools" in str(skein_path.resolve())
+        except Exception:
+            pass
+
+    if is_pipx:
+        upgrade_cmd = ["pipx", "upgrade", "skn"]
+    elif is_uv_tool:
+        upgrade_cmd = ["uv", "tool", "upgrade", "skn"]
+    else:
+        # Fallback: pip install --upgrade in the same Python that's running
+        upgrade_cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "skn"]
+
+    ui.blank()
+    ui.step(f"Upgrading skn → {latest}", detail=" ".join(upgrade_cmd), state="ok")
+    ui.blank()
+
+    try:
+        result = subprocess.run(upgrade_cmd, capture_output=False, text=True)
+        if result.returncode != 0:
+            err_console.print(
+                f"  [red]✗[/red] Upgrade command exited {result.returncode}."
+            )
+            sys.exit(result.returncode)
+    except FileNotFoundError as exc:
+        err_console.print(f"  [red]✗[/red] Command not found: {exc}")
+        sys.exit(1)
+
+    # Invalidate the update-check cache so next `skein status` shows up to date.
+    try:
+        from .version_check import _save_cache
+        _save_cache(latest)
+    except Exception:
+        pass
+
+    ui.blank()
+    ui.step(f"Upgraded to {latest}", state="ok")
+
+    # Restart the daemon so it picks up the new code.
+    from .daemon import restart as do_restart
+    restart_status = do_restart()
+    if restart_status.healthy:
+        ui.step("Daemon restarted", detail=f"via {restart_status.method}", state="ok")
+    else:
+        ui.step(
+            "Daemon restart failed",
+            detail="run `skein restart` manually",
+            state="warn",
+        )
+    ui.blank()
+
+
 # -# -# -# -# -# -# -# -# -# -# -# -# -# -# -# -# -# -# -# -# -# -# -# -# -
 # Helpers used by visible commands (hoisted out of ADR-002 deletion
 # spans during iter 33 phase B).
@@ -1981,6 +2119,15 @@ def status(output_json: bool) -> None:
             console.print(f"    {marker}  {c['label']:18}  [dim]{tag}[/dim]")
         ui.blank()
 
+    try:
+        from .version_check import update_banner
+        banner = update_banner()
+        if banner:
+            console.print(f"  {banner}")
+            ui.blank()
+    except Exception:
+        pass
+
 
 # ---------------------------------------------------------------------------
 # briefing — single-call project snapshot (LLM / human-friendly)
@@ -2498,6 +2645,16 @@ def doctor(show_perf: bool, do_clean: bool, do_reingest: bool,
         console.print(f"  [red]{issues} issue{plural} found.[/red]")
     else:
         console.print("  [green]All checks passed.[/green]")
+
+    try:
+        from .version_check import update_banner
+        banner = update_banner()
+        if banner:
+            ui.blank()
+            console.print(f"  {banner}")
+    except Exception:
+        pass
+
     ui.blank()
 
 

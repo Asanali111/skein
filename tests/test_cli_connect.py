@@ -24,6 +24,10 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     monkeypatch.setenv("PATH", "")
     monkeypatch.setattr(conns, "CONNECTIONS_PATH", tmp_path / "connections.json")
+    # WindsurfClient detects via /Applications/Windsurf.app on macOS — stub it out
+    # so the "no detected clients" test isn't broken by a real Windsurf install.
+    from skein import clients as clients_mod
+    monkeypatch.setattr(clients_mod, "_is_macos", lambda: False)
     return tmp_path
 
 
