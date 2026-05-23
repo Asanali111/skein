@@ -817,6 +817,85 @@ class KiroClient(BaseClient):
 
 
 # ---------------------------------------------------------------------------
+# Continue.dev
+# ---------------------------------------------------------------------------
+
+class ContinueClient(BaseClient):
+    id = "continue"
+    display_name = "Continue.dev"
+    description = "Open-source AI code assistant for VS Code / JetBrains"
+
+    # Continue.dev picks up standalone block files from ~/.continue/mcpServers/.
+    # Documented at docs.continue.dev/customize/deep-dives/mcp (Quick Start).
+    # Using a dedicated file avoids touching the user's hand-edited config.yaml
+    # and makes disconnect = delete one file.
+    _BLOCK_FILENAME = "skein.yaml"
+
+    def _mcpservers_dir(self) -> Path:
+        return Path.home() / ".continue" / "mcpServers"
+
+    def _block_path(self) -> Path:
+        return self._mcpservers_dir() / self._BLOCK_FILENAME
+
+    def detect(self) -> tuple[bool, str]:
+        # ~/.continue is uniquely owned by the Continue.dev VS Code/JetBrains
+        # extension — it's a reliable detection signal.
+        return _detect_path(Path.home() / ".continue")
+
+    def connect(self, mcp_url, bearer_token, scope_handle, repo) -> list[str]:
+        import yaml  # pyyaml — already a project dep
+
+        block_dir = self._mcpservers_dir()
+        block_dir.mkdir(parents=True, exist_ok=True)
+        path = self._block_path()
+
+        # Overwrite unconditionally — same lesson as iter 18.6 Codex fix
+        # (stale tokens must not survive a token rotation).
+        data = {
+            "name": "Skein",
+            "version": "0.0.1",
+            "schema": "v1",
+            "mcpServers": [
+                {
+                    "name": "skein",
+                    "type": "streamable-http",
+                    "url": mcp_url,
+                    "requestOptions": {
+                        "headers": {
+                            "Authorization": f"Bearer {bearer_token}",
+                        },
+                    },
+                }
+            ],
+        }
+        with open(path, "w") as f:
+            yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
+        return [str(path)]
+
+    def disconnect(self, recorded_paths=None) -> list[str]:
+        # The block file is entirely Skein-owned — safe to delete outright.
+        candidates: list[Path] = []
+        seen: set[str] = set()
+        for raw in (recorded_paths or []):
+            p = Path(raw)
+            key = str(p)
+            if key not in seen:
+                seen.add(key)
+                candidates.append(p)
+        # Always try the default location as a fallback.
+        default = self._block_path()
+        if str(default) not in seen:
+            candidates.append(default)
+
+        removed: list[str] = []
+        for path in candidates:
+            if path.exists():
+                path.unlink()
+                removed.append(str(path))
+        return removed
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
@@ -832,6 +911,7 @@ ALL_CLIENTS: list[BaseClient] = [
     HermesClient(),
     CrushClient(),
     KiroClient(),
+    ContinueClient(),
 ]
 
 
