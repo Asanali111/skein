@@ -319,6 +319,72 @@ class TestWindsurfClient:
 
 
 # ---------------------------------------------------------------------------
+# Goose (Block)
+# ---------------------------------------------------------------------------
+
+class TestGooseClient:
+    def test_connect_writes_config_yaml(self, fake_home, repo):
+        client = clients_mod.GooseClient()
+        paths = client.connect("http://x/mcp", "tok", "project:p", repo)
+        cfg = fake_home / ".config" / "goose" / "config.yaml"
+        assert cfg.exists()
+        assert str(cfg) in paths
+        data = yaml.safe_load(cfg.read_text())
+        ext = data["extensions"]["skein"]
+        assert ext["type"] == "streamable_http"
+        assert ext["uri"] == "http://x/mcp"
+        assert ext["headers"]["Authorization"] == "Bearer tok"
+        assert ext["enabled"] is True
+
+    def test_connect_writes_correct_schema(self, fake_home, repo):
+        """Pin exact field set: type=streamable_http, uri (not url), headers, name,
+        description, enabled, timeout. This matches ExtensionConfig::StreamableHttp in
+        crates/goose/src/agents/extension.rs (serde rename = 'streamable_http')."""
+        clients_mod.GooseClient().connect("http://x/mcp", "tok", "p", repo)
+        cfg = fake_home / ".config" / "goose" / "config.yaml"
+        ext = yaml.safe_load(cfg.read_text())["extensions"]["skein"]
+        assert ext["type"] == "streamable_http"
+        assert "uri" in ext
+        assert "url" not in ext  # Goose uses 'uri' not 'url'
+        assert ext["name"] == "skein"
+        assert "description" in ext  # required by Goose's deserializer
+
+    def test_connect_preserves_other_extensions(self, fake_home, repo):
+        cfg = fake_home / ".config" / "goose" / "config.yaml"
+        cfg.parent.mkdir(parents=True)
+        cfg.write_text(
+            yaml.dump({"extensions": {"other": {"type": "builtin", "name": "other", "enabled": True}}})
+        )
+        clients_mod.GooseClient().connect("http://x/mcp", "tok", "p", repo)
+        data = yaml.safe_load(cfg.read_text())
+        assert "other" in data["extensions"]
+        assert "skein" in data["extensions"]
+
+    def test_disconnect_removes_skein_only(self, fake_home, repo):
+        client = clients_mod.GooseClient()
+        cfg = fake_home / ".config" / "goose" / "config.yaml"
+        cfg.parent.mkdir(parents=True)
+        cfg.write_text(yaml.dump({
+            "extensions": {
+                "skein": {"type": "streamable_http", "uri": "http://x/mcp", "enabled": True},
+                "other": {"type": "builtin", "name": "other", "enabled": True},
+            }
+        }))
+        modified = client.disconnect(recorded_paths=[str(cfg)])
+        data = yaml.safe_load(cfg.read_text())
+        assert "skein" not in data["extensions"]
+        assert "other" in data["extensions"]
+        assert str(cfg) in modified
+
+    def test_detect_via_config_dir(self, fake_home):
+        (fake_home / ".config" / "goose").mkdir(parents=True)
+        client = clients_mod.GooseClient()
+        detected, note = client.detect()
+        assert detected is True
+        assert "goose" in note.lower()
+
+
+# ---------------------------------------------------------------------------
 # Disconnect: empty registry, missing files, multiple paths
 # ---------------------------------------------------------------------------
 
@@ -601,5 +667,78 @@ class TestContinueClient:
 
     def test_clean_machine_not_detected(self, fake_home):
         client = clients_mod.ContinueClient()
+        detected, _ = client.detect()
+        assert detected is False
+
+
+# ---------------------------------------------------------------------------
+# gptme
+# ---------------------------------------------------------------------------
+
+class TestGptmeClient:
+    def test_connect_writes_config_toml(self, fake_home, repo):
+        client = clients_mod.GptmeClient()
+        paths = client.connect("http://x/mcp", "tok", "project:p", repo)
+        cfg = fake_home / ".config" / "gptme" / "config.toml"
+        assert cfg.exists()
+        assert str(cfg) in paths
+        text = cfg.read_text()
+        assert "[[mcp.servers]]" in text
+        assert 'name = "skein"' in text
+        assert 'url = "http://x/mcp"' in text
+        assert 'Authorization = "Bearer tok"' in text
+
+    def test_connect_refreshes_on_reconnect(self, fake_home, repo):
+        """Second connect must REPLACE the existing skein block, not skip it.
+
+        Mirrors the iter-18.6 Codex fix: stale tokens must not survive a
+        token rotation."""
+        c = clients_mod.GptmeClient()
+        c.connect("http://x/mcp", "tok", "project:p", repo)
+        c.connect("http://x/mcp", "tok2", "project:p", repo)
+        cfg = fake_home / ".config" / "gptme" / "config.toml"
+        text = cfg.read_text()
+        # Exactly one skein block with the new token
+        assert text.count('name = "skein"') == 1
+        assert 'Authorization = "Bearer tok2"' in text
+        assert "Bearer tok\n" not in text
+
+    def test_connect_preserves_other_servers(self, fake_home, repo):
+        cfg = fake_home / ".config" / "gptme" / "config.toml"
+        cfg.parent.mkdir(parents=True)
+        cfg.write_text(
+            '[user]\nname = "alice"\n\n'
+            '[[mcp.servers]]\nname = "other"\nurl = "http://other"\n'
+        )
+        clients_mod.GptmeClient().connect("http://x/mcp", "tok", "project:p", repo)
+        text = cfg.read_text()
+        assert 'name = "alice"' in text
+        assert 'name = "other"' in text
+        assert 'name = "skein"' in text
+
+    def test_disconnect_strips_skein_block_only(self, fake_home, repo):
+        cfg = fake_home / ".config" / "gptme" / "config.toml"
+        cfg.parent.mkdir(parents=True)
+        cfg.write_text(
+            '[user]\nname = "alice"\n\n'
+            '[[mcp.servers]]\nname = "other"\nurl = "http://other"\n\n'
+        )
+        client = clients_mod.GptmeClient()
+        client.connect("http://x/mcp", "tok", "project:p", repo)
+        client.disconnect(recorded_paths=[str(cfg)])
+        text = cfg.read_text()
+        assert 'name = "alice"' in text
+        assert 'name = "other"' in text
+        assert 'name = "skein"' not in text
+
+    def test_detect_via_config_dir(self, fake_home):
+        (fake_home / ".config" / "gptme").mkdir(parents=True)
+        client = clients_mod.GptmeClient()
+        detected, note = client.detect()
+        assert detected is True
+        assert "gptme" in note
+
+    def test_clean_machine_not_detected(self, fake_home):
+        client = clients_mod.GptmeClient()
         detected, _ = client.detect()
         assert detected is False

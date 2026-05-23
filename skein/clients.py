@@ -721,6 +721,125 @@ class GooseClient(BaseClient):
 
 
 # ---------------------------------------------------------------------------
+# gptme
+# ---------------------------------------------------------------------------
+
+def _gptme_config_path() -> Path:
+    """gptme uses ``~/.config/gptme/config.toml`` on all platforms.
+
+    Unlike opencode/Cursor which have Windows-specific AppData paths, gptme
+    hardcodes ``os.path.expanduser("~/.config/gptme/config.toml")`` in its
+    source (gptme/config/user.py) — no platform branching.
+    """
+    return Path.home() / ".config" / "gptme" / "config.toml"
+
+
+def _strip_gptme_skein_block(text: str) -> str:
+    """Remove the skein ``[[mcp.servers]]`` block from a gptme config.
+
+    The block we write on connect looks like::
+
+        [[mcp.servers]]
+        name = "skein"
+        enabled = true
+        url = "..."
+        headers = { Authorization = "Bearer ..." }
+
+    We strip from the ``[[mcp.servers]]`` line whose content includes
+    ``name = "skein"`` through the next blank line or top-level table header.
+    """
+    lines = text.splitlines(keepends=True)
+    out: list[str] = []
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
+        stripped = line.strip()
+        if stripped == "[[mcp.servers]]":
+            # Peek ahead to see if this block belongs to skein
+            j = i + 1
+            block: list[str] = [line]
+            is_skein = False
+            while j < n:
+                nxt = lines[j]
+                nxt_strip = nxt.strip()
+                # End of this block: any top-level table header or new array-of-tables
+                if nxt_strip.startswith("[[") or (
+                    nxt_strip.startswith("[") and not nxt_strip.startswith("[[")
+                ):
+                    break
+                if 'name = "skein"' in nxt_strip:
+                    is_skein = True
+                block.append(nxt)
+                j += 1
+            if is_skein:
+                # Drop the block and any single trailing blank line
+                if j < n and lines[j].strip() == "":
+                    j += 1
+                i = j
+                continue
+            else:
+                out.extend(block)
+                i = j
+                continue
+        out.append(line)
+        i += 1
+    return "".join(out)
+
+
+class GptmeClient(BaseClient):
+    id = "gptme"
+    display_name = "gptme"
+    description = "Autonomous terminal agent"
+
+    def detect(self) -> tuple[bool, str]:
+        return _detect_any(
+            _detect_binary("gptme"),
+            _detect_path(_gptme_config_path().parent),
+        )
+
+    def connect(self, mcp_url, bearer_token, scope_handle, repo) -> list[str]:
+        path = _gptme_config_path()
+        existing = path.read_text() if path.exists() else ""
+
+        # Strip any stale skein block before appending a fresh one so that a
+        # token rotation propagates instead of being silently ignored
+        # (same lesson as the iter-18.6 Codex fix).
+        cleaned = _strip_gptme_skein_block(existing)
+
+        # gptme TOML schema (docs/mcp.rst): [[mcp.servers]] with name, enabled,
+        # url, and inline-table headers. Transport inferred from presence of url.
+        block = (
+            "\n[[mcp.servers]]\n"
+            'name = "skein"\n'
+            "enabled = true\n"
+            f'url = "{mcp_url}"\n'
+            f'headers = {{Authorization = "Bearer {bearer_token}"}}\n'
+        )
+        body = cleaned.rstrip() + "\n" if cleaned.strip() else ""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body + block)
+        return [str(path)]
+
+    def disconnect(self, recorded_paths=None) -> list[str]:
+        modified: list[str] = []
+        candidates = [Path(p) for p in (recorded_paths or [])] or [
+            _gptme_config_path(),
+        ]
+        for path in candidates:
+            if not path.exists():
+                continue
+            text = path.read_text()
+            if "skein" not in text:
+                continue
+            cleaned = _strip_gptme_skein_block(text)
+            if cleaned != text:
+                path.write_text(cleaned)
+                modified.append(str(path))
+        return modified
+
+
+# ---------------------------------------------------------------------------
 # Windsurf
 # ---------------------------------------------------------------------------
 
@@ -1001,6 +1120,8 @@ ALL_CLIENTS: list[BaseClient] = [
     AntigravityClient(),
     OpenCodeClient(),
     CodexClient(),
+    GooseClient(),
+    GptmeClient(),
     WindsurfClient(),
     HermesClient(),
     CrushClient(),
