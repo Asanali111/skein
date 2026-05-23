@@ -418,3 +418,111 @@ class TestHermesClient:
         client = clients_mod.HermesClient()
         detected, note = client.detect()
         assert detected is True
+
+
+# ---------------------------------------------------------------------------
+# Crush (Charm)
+# ---------------------------------------------------------------------------
+
+class TestCrushClient:
+    def test_connect_writes_crush_json(self, fake_home, repo):
+        client = clients_mod.CrushClient()
+        paths = client.connect("http://x/mcp", "tok", "project:p", repo)
+        cfg = repo / ".crush.json"
+        assert cfg.exists()
+        assert str(cfg) in paths
+        data = json.loads(cfg.read_text())
+        assert data["mcp"]["skein"]["url"] == "http://x/mcp"
+        assert data["mcp"]["skein"]["headers"]["Authorization"] == "Bearer tok"
+        # Crush requires "type" explicitly — does NOT infer from key presence
+        assert data["mcp"]["skein"]["type"] == "http"
+
+    def test_connect_preserves_other_servers(self, fake_home, repo):
+        cfg = repo / ".crush.json"
+        cfg.write_text(json.dumps({"mcp": {"other": {"type": "stdio", "command": "node"}}}))
+        clients_mod.CrushClient().connect("http://x/mcp", "tok", "p", repo)
+        data = json.loads(cfg.read_text())
+        assert "other" in data["mcp"]
+        assert "skein" in data["mcp"]
+
+    def test_disconnect_removes_skein_only(self, fake_home, repo):
+        cfg = repo / ".crush.json"
+        cfg.write_text(json.dumps({
+            "mcp": {
+                "skein": {"type": "http", "url": "http://x/mcp"},
+                "other": {"type": "stdio", "command": "node"},
+            }
+        }))
+        modified = clients_mod.CrushClient().disconnect(recorded_paths=[str(cfg)])
+        data = json.loads(cfg.read_text())
+        assert "skein" not in data["mcp"]
+        assert "other" in data["mcp"]
+        assert str(cfg) in modified
+
+    def test_detect_via_config_dir(self, fake_home):
+        (fake_home / ".config" / "crush").mkdir(parents=True)
+        client = clients_mod.CrushClient()
+        detected, note = client.detect()
+        assert detected is True
+        assert "crush" in note.lower()
+
+
+# ---------------------------------------------------------------------------
+# Kiro (AWS)
+# ---------------------------------------------------------------------------
+
+class TestKiroClient:
+    def test_connect_writes_mcp_json(self, fake_home, repo):
+        client = clients_mod.KiroClient()
+        paths = client.connect("http://x/mcp", "tok", "project:p", repo)
+        cfg = repo / ".kiro" / "settings" / "mcp.json"
+        assert cfg.exists()
+        assert str(cfg) in paths
+        data = json.loads(cfg.read_text())
+        assert data["mcpServers"]["skein"]["url"] == "http://x/mcp"
+        assert data["mcpServers"]["skein"]["headers"]["Authorization"] == "Bearer tok"
+
+    def test_connect_writes_schema_compatible_with_kiro(self, fake_home, repo):
+        """Regression pin: Kiro infers transport from 'url' vs 'command' presence;
+        it does NOT require an explicit 'type' field (per kiro.dev/docs/mcp/configuration/).
+        Pin the exact keyset so a future refactor doesn't accidentally add 'type'."""
+        clients_mod.KiroClient().connect("http://x/mcp", "tok", "p", repo)
+        cfg = repo / ".kiro" / "settings" / "mcp.json"
+        entry = json.loads(cfg.read_text())["mcpServers"]["skein"]
+        assert "type" not in entry, (
+            "Kiro infers transport from key presence — do not write a 'type' field"
+        )
+        assert entry["url"] == "http://x/mcp"
+        assert entry["headers"] == {"Authorization": "Bearer tok"}
+        assert set(entry.keys()) == {"url", "headers"}
+
+    def test_connect_preserves_other_servers(self, fake_home, repo):
+        cfg = repo / ".kiro" / "settings" / "mcp.json"
+        cfg.parent.mkdir(parents=True)
+        cfg.write_text(json.dumps({"mcpServers": {"other": {"url": "http://other"}}}))
+        clients_mod.KiroClient().connect("http://x/mcp", "tok", "p", repo)
+        data = json.loads(cfg.read_text())
+        assert "other" in data["mcpServers"]
+        assert "skein" in data["mcpServers"]
+
+    def test_disconnect_removes_skein_only(self, fake_home, repo):
+        cfg = repo / ".kiro" / "settings" / "mcp.json"
+        cfg.parent.mkdir(parents=True)
+        cfg.write_text(json.dumps({
+            "mcpServers": {
+                "skein": {"url": "http://x/mcp"},
+                "other": {"url": "http://other"},
+            }
+        }))
+        modified = clients_mod.KiroClient().disconnect(recorded_paths=[str(cfg)])
+        data = json.loads(cfg.read_text())
+        assert "skein" not in data["mcpServers"]
+        assert "other" in data["mcpServers"]
+        assert str(cfg) in modified
+
+    def test_detect_via_kiro_home_directory(self, fake_home):
+        (fake_home / ".kiro").mkdir()
+        client = clients_mod.KiroClient()
+        detected, note = client.detect()
+        assert detected is True
+        assert "kiro" in note.lower()

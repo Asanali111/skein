@@ -776,6 +776,47 @@ class CrushClient(BaseClient):
 
 
 # ---------------------------------------------------------------------------
+# Kiro
+# ---------------------------------------------------------------------------
+
+class KiroClient(BaseClient):
+    id = "kiro"
+    display_name = "Kiro"
+    description = "AWS's spec-first AI IDE"
+
+    def detect(self) -> tuple[bool, str]:
+        candidates = [Path.home() / ".kiro"]
+        if _is_macos():
+            candidates.append(Path("/Applications/Kiro.app"))
+        return _detect_any(
+            _detect_binary("kiro"),
+            _detect_path(*candidates),
+        )
+
+    def connect(self, mcp_url, bearer_token, scope_handle, repo) -> list[str]:
+        # Kiro workspace config lives at .kiro/settings/mcp.json (note the
+        # extra settings/ segment — different from Cursor's .cursor/mcp.json).
+        # Kiro's schema infers transport from the presence of "url" vs
+        # "command" — no explicit "type" field, per kiro.dev/docs/mcp/configuration/.
+        path = repo / ".kiro" / "settings" / "mcp.json"
+        data = _read_json(path)
+        data.setdefault("mcpServers", {})
+        data["mcpServers"]["skein"] = {
+            "url": mcp_url,
+            "headers": {"Authorization": f"Bearer {bearer_token}"},
+        }
+        _write_json(path, data)
+        return [str(path)]
+
+    def disconnect(self, recorded_paths=None) -> list[str]:
+        return _remove_skein_from_json(
+            recorded_paths or [],
+            ["mcpServers"],
+            default_paths=[Path.cwd() / ".kiro" / "settings" / "mcp.json"],
+        )
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
@@ -790,6 +831,7 @@ ALL_CLIENTS: list[BaseClient] = [
     WindsurfClient(),
     HermesClient(),
     CrushClient(),
+    KiroClient(),
 ]
 
 
