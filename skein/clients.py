@@ -736,6 +736,46 @@ class HermesClient(BaseClient):
 
 
 # ---------------------------------------------------------------------------
+# Crush (Charm)
+# ---------------------------------------------------------------------------
+
+class CrushClient(BaseClient):
+    id = "crush"
+    display_name = "Crush"
+    description = "Charm's terminal coding agent"
+
+    def detect(self) -> tuple[bool, str]:
+        return _detect_any(
+            _detect_binary("crush"),
+            _detect_path(Path.home() / ".config" / "crush"),
+        )
+
+    def connect(self, mcp_url, bearer_token, scope_handle, repo) -> list[str]:
+        # Crush resolves .crush.json (project-local hidden) first in its
+        # priority order: .crush.json > crush.json > $XDG_CONFIG_HOME/crush/crush.json.
+        # Writing to the project-local hidden file keeps user's global config intact.
+        path = repo / ".crush.json"
+        data = _read_json(path)
+        data.setdefault("mcp", {})
+        # Crush requires "type" to be stated explicitly — it does NOT infer
+        # transport from key presence (unlike Gemini CLI / opencode).
+        data["mcp"]["skein"] = {
+            "type": "http",
+            "url": mcp_url,
+            "headers": {"Authorization": f"Bearer {bearer_token}"},
+        }
+        _write_json(path, data)
+        return [str(path)]
+
+    def disconnect(self, recorded_paths=None) -> list[str]:
+        return _remove_skein_from_json(
+            recorded_paths or [],
+            ["mcp"],
+            default_paths=[Path.cwd() / ".crush.json"],
+        )
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
@@ -749,6 +789,7 @@ ALL_CLIENTS: list[BaseClient] = [
     CodexClient(),
     WindsurfClient(),
     HermesClient(),
+    CrushClient(),
 ]
 
 

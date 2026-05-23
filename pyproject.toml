@@ -47,6 +47,8 @@ dependencies = [
   # Local-first semantic embeddings — BAAI/bge-small-en-v1.5 (384-dim).
   # Downloads ~130 MB to ~/.cache/fastembed/ on first use. No API key.
   "fastembed>=0.3.0",
+  # Hermes (Nous Research) uses YAML for its config.yaml — needed by HermesClient.
+  "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

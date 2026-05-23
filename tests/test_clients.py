@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
 from skein import clients as clients_mod
 
@@ -333,3 +334,87 @@ class TestDisconnectResilience:
             recorded_paths=[str(repo / "nonexistent")]
         )
         assert modified == []
+
+
+# ---------------------------------------------------------------------------
+# Hermes (Nous Research)
+# ---------------------------------------------------------------------------
+
+class TestHermesClient:
+    def test_connect_writes_mcp_servers_skein_to_yaml(self, fake_home, repo):
+        """connect() must write mcp_servers.skein into config.yaml."""
+        client = clients_mod.HermesClient()
+        paths = client.connect("http://x/mcp", "tok", "project:p", repo)
+        config_path = fake_home / ".hermes" / "config.yaml"
+        assert config_path.exists()
+        assert str(config_path) in paths
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        assert "mcp_servers" in config
+        assert "skein" in config["mcp_servers"]
+        assert config["mcp_servers"]["skein"]["url"] == "http://x/mcp"
+
+    def test_connect_writes_token_to_env(self, fake_home, repo):
+        """connect() must write MCP_SKEIN_API_KEY=<token> to .env."""
+        client = clients_mod.HermesClient()
+        paths = client.connect("http://x/mcp", "tok", "project:p", repo)
+        env_path = fake_home / ".hermes" / ".env"
+        assert env_path.exists()
+        assert str(env_path) in paths
+        env_text = env_path.read_text(encoding="utf-8")
+        assert "MCP_SKEIN_API_KEY=tok" in env_text
+
+    def test_connect_uses_env_var_interpolation_not_literal_token(self, fake_home, repo):
+        """Authorization header must use ${MCP_SKEIN_API_KEY}, not the raw token."""
+        client = clients_mod.HermesClient()
+        client.connect("http://x/mcp", "supersecret", "project:p", repo)
+        config_path = fake_home / ".hermes" / "config.yaml"
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        auth = config["mcp_servers"]["skein"]["headers"]["Authorization"]
+        assert auth == "Bearer ${MCP_SKEIN_API_KEY}"
+        assert "supersecret" not in auth
+
+    def test_connect_preserves_other_mcp_servers(self, fake_home, repo):
+        """connect() must not remove pre-existing mcp_servers entries."""
+        hermes_home = fake_home / ".hermes"
+        hermes_home.mkdir(parents=True, exist_ok=True)
+        config_path = hermes_home / "config.yaml"
+        config_path.write_text(
+            yaml.dump({"mcp_servers": {"other": {"url": "http://other"}}}),
+            encoding="utf-8",
+        )
+        clients_mod.HermesClient().connect("http://x/mcp", "tok", "p", repo)
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        assert "other" in config["mcp_servers"]
+        assert "skein" in config["mcp_servers"]
+
+    def test_disconnect_removes_skein_from_mcp_servers(self, fake_home, repo):
+        """disconnect() must remove skein from mcp_servers (keeping other entries)."""
+        client = clients_mod.HermesClient()
+        # Seed with two servers so mcp_servers is not empty after removal
+        hermes_home = fake_home / ".hermes"
+        hermes_home.mkdir(parents=True, exist_ok=True)
+        config_path = hermes_home / "config.yaml"
+        config_path.write_text(
+            yaml.dump({
+                "mcp_servers": {
+                    "skein": {"url": "http://x/mcp", "headers": {"Authorization": "Bearer ${MCP_SKEIN_API_KEY}"}},
+                    "other": {"url": "http://other"},
+                }
+            }),
+            encoding="utf-8",
+        )
+        env_path = hermes_home / ".env"
+        env_path.write_text("MCP_SKEIN_API_KEY=tok\n", encoding="utf-8")
+
+        modified = client.disconnect()
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        assert "skein" not in config.get("mcp_servers", {})
+        assert "other" in config.get("mcp_servers", {})
+        assert str(config_path) in modified
+
+    def test_detect_via_hermes_home_directory(self, fake_home):
+        """detect() must return True when ~/.hermes/ exists."""
+        (fake_home / ".hermes").mkdir()
+        client = clients_mod.HermesClient()
+        detected, note = client.detect()
+        assert detected is True
