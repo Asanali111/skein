@@ -2567,6 +2567,27 @@ def doctor(show_perf: bool, do_clean: bool, do_reingest: bool,
                             ),
                             state="ok" if drained_pct >= 70 else "warn",
                         )
+
+                    # Iter 35: recall→write rate. Of the recalls in the last
+                    # 24h, how many led to a fragment back-linked via
+                    # from_recall? Idle daemons read 0/0 = "no signal yet."
+                    linked, total24 = st.recall_write_stats(hours=24)
+                    if total24 == 0:
+                        ui.step(
+                            "Recall→write (24h)",
+                            detail="no recalls in window (idle daemon)",
+                            state="ok",
+                        )
+                    else:
+                        pct = 100.0 * linked / total24
+                        ui.step(
+                            "Recall→write (24h)",
+                            detail=(
+                                f"{linked}/{total24} recalls produced a "
+                                f"linked write ({pct:.0f}%)"
+                            ),
+                            state="ok",
+                        )
                 except Exception:
                     # Read-only diagnostics — never wedge doctor.
                     pass
