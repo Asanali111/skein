@@ -40,7 +40,9 @@ def _bump(version: str, part: str) -> str:
 
 def _replace_version(path: Path, old: str, new: str, pattern: str) -> None:
     text = path.read_text()
-    updated = re.sub(pattern, lambda m: m.group(0).replace(old, new), text)
+    # re.MULTILINE so ^ matches start-of-line, not just start-of-string —
+    # otherwise we couldn't anchor `^version =` against a multi-line TOML.
+    updated = re.sub(pattern, lambda m: m.group(0).replace(old, new), text, flags=re.MULTILINE)
     if updated == text:
         raise ValueError(f"Version string not found in {path}")
     path.write_text(updated)
