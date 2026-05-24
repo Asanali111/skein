@@ -17,9 +17,19 @@ from skein import clients as clients_mod
 @pytest.fixture
 def fake_home(tmp_path, monkeypatch):
     """Redirect Path.home() and clear PATH so detection doesn't match the
-    test host's real installs."""
+    test host's real installs.
+
+    Also redirects ``APPDATA`` and ``LOCALAPPDATA`` to subdirs under
+    ``tmp_path`` so clients with Windows-specific config paths
+    (opencode → ``%APPDATA%/opencode``, goose → ``%APPDATA%/Block/goose``)
+    write into the test sandbox instead of the real user profile.
+    Harmless on POSIX where ``_appdata_dir()`` returns ``None`` and these
+    env vars are unused by Skein.
+    """
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     monkeypatch.setenv("PATH", "")
+    monkeypatch.setenv("APPDATA", str(tmp_path / "AppData" / "Roaming"))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
     return tmp_path
 
 
@@ -179,7 +189,7 @@ class TestGeminiCLIClient:
 class TestOpenCodeClient:
     def test_connect_writes_nested(self, fake_home, repo):
         clients_mod.OpenCodeClient().connect("http://x/mcp", "tok", "p", repo)
-        cfg = fake_home / ".config" / "opencode" / "config.json"
+        cfg = clients_mod._opencode_config_dir() / "config.json"
         assert cfg.exists()
         data = json.loads(cfg.read_text())
         assert data["mcp"]["servers"]["skein"]["url"] == "http://x/mcp"
@@ -188,7 +198,7 @@ class TestOpenCodeClient:
         """opencode MCP schema infers transport from key presence (iter 18.6 fix
         parallel to the Gemini CLI fix in iter 18.1)."""
         clients_mod.OpenCodeClient().connect("http://x/mcp", "tok", "p", repo)
-        cfg = fake_home / ".config" / "opencode" / "config.json"
+        cfg = clients_mod._opencode_config_dir() / "config.json"
         entry = json.loads(cfg.read_text())["mcp"]["servers"]["skein"]
         assert "transport" not in entry
         assert set(entry.keys()) == {"url", "headers"}
@@ -196,7 +206,7 @@ class TestOpenCodeClient:
     def test_disconnect_removes_nested(self, fake_home, repo):
         client = clients_mod.OpenCodeClient()
         client.connect("http://x/mcp", "tok", "p", repo)
-        cfg = fake_home / ".config" / "opencode" / "config.json"
+        cfg = clients_mod._opencode_config_dir() / "config.json"
         client.disconnect(recorded_paths=[str(cfg)])
         data = json.loads(cfg.read_text())
         assert "skein" not in data["mcp"]["servers"]
@@ -326,7 +336,7 @@ class TestGooseClient:
     def test_connect_writes_config_yaml(self, fake_home, repo):
         client = clients_mod.GooseClient()
         paths = client.connect("http://x/mcp", "tok", "project:p", repo)
-        cfg = fake_home / ".config" / "goose" / "config.yaml"
+        cfg = clients_mod._goose_config_dir() / "config.yaml"
         assert cfg.exists()
         assert str(cfg) in paths
         data = yaml.safe_load(cfg.read_text())
@@ -341,7 +351,7 @@ class TestGooseClient:
         description, enabled, timeout. This matches ExtensionConfig::StreamableHttp in
         crates/goose/src/agents/extension.rs (serde rename = 'streamable_http')."""
         clients_mod.GooseClient().connect("http://x/mcp", "tok", "p", repo)
-        cfg = fake_home / ".config" / "goose" / "config.yaml"
+        cfg = clients_mod._goose_config_dir() / "config.yaml"
         ext = yaml.safe_load(cfg.read_text())["extensions"]["skein"]
         assert ext["type"] == "streamable_http"
         assert "uri" in ext
@@ -350,7 +360,7 @@ class TestGooseClient:
         assert "description" in ext  # required by Goose's deserializer
 
     def test_connect_preserves_other_extensions(self, fake_home, repo):
-        cfg = fake_home / ".config" / "goose" / "config.yaml"
+        cfg = clients_mod._goose_config_dir() / "config.yaml"
         cfg.parent.mkdir(parents=True)
         cfg.write_text(
             yaml.dump({"extensions": {"other": {"type": "builtin", "name": "other", "enabled": True}}})
@@ -362,7 +372,7 @@ class TestGooseClient:
 
     def test_disconnect_removes_skein_only(self, fake_home, repo):
         client = clients_mod.GooseClient()
-        cfg = fake_home / ".config" / "goose" / "config.yaml"
+        cfg = clients_mod._goose_config_dir() / "config.yaml"
         cfg.parent.mkdir(parents=True)
         cfg.write_text(yaml.dump({
             "extensions": {
@@ -377,7 +387,7 @@ class TestGooseClient:
         assert str(cfg) in modified
 
     def test_detect_via_config_dir(self, fake_home):
-        (fake_home / ".config" / "goose").mkdir(parents=True)
+        clients_mod._goose_config_dir().mkdir(parents=True)
         client = clients_mod.GooseClient()
         detected, note = client.detect()
         assert detected is True
