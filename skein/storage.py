@@ -19,12 +19,21 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .models import (
-    Chunk, ChunkCreate,
-    Commit, CommitCreate,
-    Fragment, FragmentCreate, FragmentUpdate,
-    Identity, IdentityCreate,
-    Lease, LeaseCreate,
-    Scope, ScopeCreate, ScopeMembership, ScopeMembershipCreate,
+    Chunk,
+    ChunkCreate,
+    Commit,
+    CommitCreate,
+    Fragment,
+    FragmentCreate,
+    FragmentUpdate,
+    Identity,
+    IdentityCreate,
+    Lease,
+    LeaseCreate,
+    Scope,
+    ScopeCreate,
+    ScopeMembership,
+    ScopeMembershipCreate,
 )
 
 logger = logging.getLogger("skein.storage")
@@ -525,7 +534,7 @@ class Storage:
         if method == "explicit":
             import hashlib
             tool = (data.created_by_tool or "").lower()
-            seed = f"{data.scope_id}|{data.type}|{tool}|{data.content}".encode("utf-8")
+            seed = f"{data.scope_id}|{data.type}|{tool}|{data.content}".encode()
             dedupe_key = hashlib.sha256(seed).hexdigest()[:32]
             existing = self._conn.execute(
                 "SELECT id FROM fragments WHERE dedupe_key = ? "
@@ -950,37 +959,35 @@ class Storage:
             return []
 
         placeholders = ",".join("?" * len(scope_ids))
-        type_filter_clause = ""
-        type_params: list[Any] = []
+        conditions = ["fragments_fts MATCH ?", f"f.scope_id IN ({placeholders})"]
+        params: list[Any] = [_fts_escape(query)] + scope_ids
+
         if type_filter:
             tp = ",".join("?" * len(type_filter))
-            type_filter_clause = f"AND f.type IN ({tp})"
-            type_params = list(type_filter)
+            conditions.append(f"f.type IN ({tp})")
+            params.extend(type_filter)
 
-        stale_clause = "" if include_stale else (
-            "AND f.is_stale = 0 "
-            "AND (f.expires_at IS NULL OR f.expires_at > datetime('now'))"
-        )
-        value_clause = ""
-        value_params: list[Any] = []
+        if not include_stale:
+            conditions.append("f.is_stale = 0")
+            conditions.append("(f.expires_at IS NULL OR f.expires_at > datetime('now'))")
+
         if value_floor > 0.0:
-            value_clause = "AND f.value >= ?"
-            value_params = [float(value_floor)]
+            conditions.append("f.value >= ?")
+            params.append(float(value_floor))
+
+        where_clause = " AND ".join(conditions)
+        params.append(limit)
 
         rows = self._conn.execute(
             f"""
             SELECT fts.fragment_id, -bm25(fragments_fts) AS score
             FROM fragments_fts AS fts
             JOIN fragments AS f ON f.id = fts.fragment_id
-            WHERE fragments_fts MATCH ?
-              AND f.scope_id IN ({placeholders})
-              {type_filter_clause}
-              {stale_clause}
-              {value_clause}
+            WHERE {where_clause}
             ORDER BY bm25(fragments_fts)
             LIMIT ?
             """,
-            [_fts_escape(query)] + scope_ids + type_params + value_params + [limit],
+            params,
         ).fetchall()
         return [(row[0], float(row[1])) for row in rows]
 
@@ -1004,32 +1011,32 @@ class Storage:
         O(batch_size · dimension · 4 bytes) — fine on any laptop.
         """
         import heapq
+
         import numpy as np
 
         if not scope_ids:
             return []
 
         placeholders = ",".join("?" * len(scope_ids))
-        type_filter_clause = ""
-        type_params: list[Any] = []
+        conditions = ["content_embedding IS NOT NULL", f"scope_id IN ({placeholders})"]
+        params: list[Any] = list(scope_ids)
+
         if type_filter:
             tp = ",".join("?" * len(type_filter))
-            type_filter_clause = f"AND type IN ({tp})"
-            type_params = list(type_filter)
+            conditions.append(f"type IN ({tp})")
+            params.extend(type_filter)
 
-        stale_clause = "" if include_stale else (
-            "AND is_stale = 0 "
-            "AND (expires_at IS NULL OR expires_at > datetime('now'))"
-        )
+        if not include_stale:
+            conditions.append("is_stale = 0")
+            conditions.append("(expires_at IS NULL OR expires_at > datetime('now'))")
+
         # Iter 31: SQL-level value floor — same rationale as keyword_search.
         # Particularly valuable here because each retained row costs
         # 4 × dimension bytes through Python's numpy reshape, so dropping
         # noise early compounds.
-        value_clause = ""
-        value_params: list[Any] = []
         if value_floor > 0.0:
-            value_clause = "AND value >= ?"
-            value_params = [float(value_floor)]
+            conditions.append("value >= ?")
+            params.append(float(value_floor))
 
         query_vec = np.frombuffer(query_vec_bytes, dtype=np.float32)
         if len(query_vec) != dimension:
@@ -1039,14 +1046,12 @@ class Storage:
             return []
         q_unit = query_vec / q_norm
 
+        where_clause = " AND ".join(conditions)
+
         cur = self._conn.execute(
             f"""SELECT id, content_embedding FROM fragments
-                WHERE content_embedding IS NOT NULL
-                  AND scope_id IN ({placeholders})
-                  {type_filter_clause}
-                  {stale_clause}
-                  {value_clause}""",
-            scope_ids + type_params + value_params,
+                WHERE {where_clause}""",
+            params,
         )
 
         row_bytes = dimension * 4
@@ -1396,26 +1401,29 @@ class Storage:
         if not scope_ids:
             return []
         scope_placeholders = ",".join("?" * len(scope_ids))
-        lang_clause, lang_params = "", []
+        conditions = ["chunks_fts MATCH ?", f"c.scope_id IN ({scope_placeholders})"]
+        params: list[Any] = [_fts_escape(query)] + scope_ids
+
         if languages:
             lp = ",".join("?" * len(languages))
-            lang_clause = f"AND c.language IN ({lp})"
-            lang_params = list(languages)
-        root_clause, root_params = "", []
+            conditions.append(f"c.language IN ({lp})")
+            params.extend(languages)
+
         if source_root:
-            root_clause = "AND c.source_root = ?"
-            root_params = [source_root]
+            conditions.append("c.source_root = ?")
+            params.append(source_root)
+
+        where_clause = " AND ".join(conditions)
+        params.append(limit)
+
         rows = self._conn.execute(
             f"""SELECT fts.chunk_id, -bm25(chunks_fts) AS score
                 FROM chunks_fts AS fts
                 JOIN chunks AS c ON c.id = fts.chunk_id
-                WHERE chunks_fts MATCH ?
-                  AND c.scope_id IN ({scope_placeholders})
-                  {lang_clause}
-                  {root_clause}
+                WHERE {where_clause}
                 ORDER BY bm25(chunks_fts)
                 LIMIT ?""",
-            [_fts_escape(query)] + scope_ids + lang_params + root_params + [limit],
+            params,
         ).fetchall()
         return [(r[0], float(r[1])) for r in rows]
 
@@ -1434,22 +1442,26 @@ class Storage:
         dims that's ~15 MB per batch — fine on any laptop.
         """
         import heapq
+
         import numpy as np
+
         from .embeddings import bytes_to_vec
 
         if not scope_ids:
             return []
 
         scope_placeholders = ",".join("?" * len(scope_ids))
-        lang_clause, lang_params = "", []
+        conditions = ["content_embedding IS NOT NULL", f"scope_id IN ({scope_placeholders})"]
+        params: list[Any] = list(scope_ids)
+
         if languages:
             lp = ",".join("?" * len(languages))
-            lang_clause = f"AND language IN ({lp})"
-            lang_params = list(languages)
-        root_clause, root_params = "", []
+            conditions.append(f"language IN ({lp})")
+            params.extend(languages)
+
         if source_root:
-            root_clause = "AND source_root = ?"
-            root_params = [source_root]
+            conditions.append("source_root = ?")
+            params.append(source_root)
 
         # Normalised query vector for cosine via dot product
         query_vec = bytes_to_vec(query_vec_bytes, dimension)
@@ -1458,13 +1470,12 @@ class Storage:
             return []
         q_unit = query_vec / q_norm
 
+        where_clause = " AND ".join(conditions)
+
         cur = self._conn.execute(
             f"""SELECT id, content_embedding FROM chunks
-                WHERE content_embedding IS NOT NULL
-                  AND scope_id IN ({scope_placeholders})
-                  {lang_clause}
-                  {root_clause}""",
-            scope_ids + lang_params + root_params,
+                WHERE {where_clause}""",
+            params,
         )
 
         # min-heap of size <= limit: (score, id)
