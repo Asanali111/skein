@@ -10,19 +10,34 @@ name: publish
 #   git push origin main
 #   → this workflow fires, builds, and publishes to PyPI automatically.
 #
-# Required secret: PYPI_TOKEN (PyPI API token scoped to the `skn` project).
-# Set it in: repo Settings → Secrets → Actions → New repository secret.
+# AUTH (pick ONE — both supported):
+#   (A) Trusted Publishing (preferred, no token to rotate):
+#       pypi.org → Account settings → Publishing → Add pending publisher with
+#         owner: Asanali111, repo: skein, workflow: publish.yml. Done.
+#   (B) Classic API token:
+#       pypi.org → Account settings → API tokens → Add token scoped to `skn`,
+#       then in this GitHub repo: Settings → Secrets → Actions →
+#       New secret named `PYPI_TOKEN` with the token value.
 
 on:
   push:
     branches: [main]
     paths:
       - pyproject.toml
+      - .github/workflows/publish.yml
+  workflow_dispatch: # manual trigger via `gh workflow run publish.yml`
 
 jobs:
   publish:
     name: Build and publish to PyPI
     runs-on: ubuntu-latest
+    permissions:
+      # Required for Trusted Publishing (auth path A). Harmless if you use
+      # the API token path (B) instead — the action picks whichever is
+      # configured.
+      id-token: write
+      # Required so the "Create GitHub release tag" step can create a release.
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
