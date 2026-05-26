@@ -57,7 +57,7 @@ wevex up
 Other install paths that work the same:
 
 ```bash
-pipx install wevex          # recommended for CLI tools — isolated env, auto-PATH
+pipx install wevex --python python3.12   # recommended for CLI tools — isolated env, auto-PATH (pin required until onnxruntime ships cp314 wheels)
 uv tool install wevex       # modern, fastest
 pip3 install wevex          # macOS users where `pip` points at Python 2
 py -m pip install wevex     # Windows

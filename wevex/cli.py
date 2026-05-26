@@ -147,7 +147,7 @@ def main(ctx: click.Context) -> None:
     LLM — Claude Code, Cursor, Codex, etc. — and the daemon takes care of
     sync, gc, and inbox approval automatically.
 
-    Full docs: https://github.com/ameliomar/wevex
+    Full docs: https://github.com/Asanali111/wevex
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())

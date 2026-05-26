@@ -2,7 +2,7 @@
 # Wevex installer — one-time bootstrap.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/ameliomar/wevex/main/bin/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/Asanali111/wevex/main/bin/install.sh | sh
 # or, when run from inside the cloned repo:
 #   ./bin/install.sh
 #
@@ -18,7 +18,7 @@
 
 set -eu
 
-REPO_URL="${WEVEX_REPO:-https://github.com/ameliomar/wevex.git}"
+REPO_URL="${WEVEX_REPO:-https://github.com/Asanali111/wevex.git}"
 WEVEX_HOME="${WEVEX_HOME:-$HOME/.wevex}"
 SOURCE_DIR="$WEVEX_HOME/source"
 VENV_DIR="$WEVEX_HOME/venv"
@@ -83,14 +83,14 @@ if [ ! -d "$VENV_DIR" ]; then
 fi
 
 VENV_PIP="$VENV_DIR/bin/pip"
-VENV_SKEIN="$VENV_DIR/bin/wevex"
+VENV_WEVEX="$VENV_DIR/bin/wevex"
 
 say "  Installing Wevex …"
 "$VENV_PIP" install --quiet --upgrade pip
 "$VENV_PIP" install --quiet -e "$SOURCE_DIR"
 ok "Wevex installed in $VENV_DIR"
 
-[ -x "$VENV_SKEIN" ] || die "Install completed but $VENV_SKEIN is not executable."
+[ -x "$VENV_WEVEX" ] || die "Install completed but $VENV_WEVEX is not executable."
 
 # ---------------------------------------------------------------------------
 # 4. Symlink onto PATH
@@ -118,13 +118,13 @@ if [ -z "$LINK_TARGET" ]; then
   warn "    echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc"
 fi
 
-ln -sf "$VENV_SKEIN" "$LINK_TARGET"
-ok "Symlinked $VENV_SKEIN → $LINK_TARGET"
+ln -sf "$VENV_WEVEX" "$LINK_TARGET"
+ok "Symlinked $VENV_WEVEX → $LINK_TARGET"
 
 # ---------------------------------------------------------------------------
 # 5. Friendly summary
 # ---------------------------------------------------------------------------
-INSTALLED_VERSION="$("$VENV_SKEIN" --version 2>/dev/null | awk '{print $NF}' || true)"
+INSTALLED_VERSION="$("$VENV_WEVEX" --version 2>/dev/null | awk '{print $NF}' || true)"
 say ""
 ok "Wevex ${INSTALLED_VERSION:-installed}.  Now run:"
 say ""

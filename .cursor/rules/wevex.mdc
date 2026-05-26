@@ -1,11 +1,11 @@
 ---
-description: Skein context bus integration — call recall/remember automatically
+description: Wevex context bus integration — call recall/remember automatically
 alwaysApply: true
 ---
 
-# Skein integration
+# Wevex integration
 
-This project uses **Skein** for cross-LLM context sharing. The local daemon
+This project uses **Wevex** for cross-LLM context sharing. The local daemon
 exposes an MCP server you have access to.
 
 ## Use these tools proactively
@@ -27,9 +27,9 @@ Use scope handle `project:ameliomar` for this project.
 
 If the MCP server is unavailable, run shell commands instead:
 ```
-/usr/local/bin/skein recall "<query>"
-/usr/local/bin/skein remember "<content>" --type decision
+/usr/local/bin/wevex recall "<query>"
+/usr/local/bin/wevex remember "<content>" --type decision
 ```
 
-(This file is auto-managed by `skein hooks install`. Delete it or run
-`skein hooks uninstall` to remove.)
+(This file is auto-managed by `wevex hooks install`. Delete it or run
+`wevex hooks uninstall` to remove.)
