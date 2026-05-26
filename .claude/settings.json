@@ -2,48 +2,48 @@
   "hooks": {
     "SessionStart": [
       {
-        "__skein_managed": true,
+        "__wevex_managed": true,
         "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "SKEIN_SCOPE=project:ameliomar /usr/local/bin/skein hook session-start"
+            "command": "WEVEX_SCOPE=project:ameliomar /usr/local/bin/wevex hook session-start"
           }
         ]
       }
     ],
     "UserPromptSubmit": [
       {
-        "__skein_managed": true,
+        "__wevex_managed": true,
         "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "SKEIN_SCOPE=project:ameliomar /usr/local/bin/skein hook user-prompt-submit"
+            "command": "WEVEX_SCOPE=project:ameliomar /usr/local/bin/wevex hook user-prompt-submit"
           }
         ]
       }
     ],
     "Stop": [
       {
-        "__skein_managed": true,
+        "__wevex_managed": true,
         "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "SKEIN_SCOPE=project:ameliomar /usr/local/bin/skein hook stop"
+            "command": "WEVEX_SCOPE=project:ameliomar /usr/local/bin/wevex hook stop"
           }
         ]
       }
     ],
     "PostToolUse": [
       {
-        "__skein_managed": true,
+        "__wevex_managed": true,
         "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "SKEIN_SCOPE=project:ameliomar /usr/local/bin/skein hook post-tool-use"
+            "command": "WEVEX_SCOPE=project:ameliomar /usr/local/bin/wevex hook post-tool-use"
           }
         ]
       }

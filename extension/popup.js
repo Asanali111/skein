@@ -1,4 +1,4 @@
-// Skein popup — scope picker + daemon URL + on/off + manual test.
+// Wevex popup — scope picker + daemon URL + on/off + manual test.
 //
 // All real work is in background.js; this file just renders state and
 // fires message-router requests when the user changes a setting.

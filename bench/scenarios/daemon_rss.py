@@ -1,14 +1,14 @@
 """Daemon RSS scenario — iter 31 ONNX-idle-unload regression antibody.
 
 When the FastembedProvider goes idle for `_IDLE_UNLOAD_SECONDS` (default
-600, env-overridable via `SKEIN_FASTEMBED_IDLE_SECONDS`), the daemon's
+600, env-overridable via `WEVEX_FASTEMBED_IDLE_SECONDS`), the daemon's
 background loop drops the ONNX runtime. The expected resident-set-size
 (RSS) drop is ~200 MB from the ONNX runtime + some additional reclaim
 from SQLite page-cache trimming.
 
 If that mechanism regresses — e.g. someone caches a reference to the
 runtime, or the env var stops being honored — the daemon's resident
-memory will stay high during inactive periods, breaking the "Skein is a
+memory will stay high during inactive periods, breaking the "Wevex is a
 quiet background daemon" promise. This scenario catches that regression.
 
 Measurement strategy:
@@ -16,7 +16,7 @@ Measurement strategy:
      (and pages are paged in).
   2. Sample RSS — that's `pre_idle_rss_mb`.
   3. Configure the provider's idle window to ~12 s via
-     `SKEIN_FASTEMBED_IDLE_SECONDS=12` for the duration of this scenario
+     `WEVEX_FASTEMBED_IDLE_SECONDS=12` for the duration of this scenario
      only (we do NOT mutate the user's persisted config).
   4. Sleep ~15 s with no embed activity.
   5. For in-process adapters: call `provider.idle_check_and_unload()`
@@ -46,9 +46,9 @@ from ..scenarios import ScenarioResult
 
 
 # Real env var read by FastembedProvider.idle_check_and_unload() — see
-# skein/embeddings.py. The task description named a different var; we
+# wevex/embeddings.py. The task description named a different var; we
 # honor the implementation, not the description.
-_IDLE_ENV_VAR = "SKEIN_FASTEMBED_IDLE_SECONDS"
+_IDLE_ENV_VAR = "WEVEX_FASTEMBED_IDLE_SECONDS"
 _IDLE_SECONDS = 12
 _SLEEP_SECONDS = 15  # > _IDLE_SECONDS so the unload check fires
 
@@ -85,7 +85,7 @@ def _resolve_daemon_pid(adapter: ReadOnlyAdapter) -> Optional[int]:
     """Pick the right PID to measure for ``adapter``.
 
     Live adapters: prefer ``adapter.daemon_pid()`` if exposed, else read
-    ``~/.config/skein/daemon.pid``. In-process adapters: just measure
+    ``~/.config/wevex/daemon.pid``. In-process adapters: just measure
     the current Python process — that's the one running the embedding
     runtime.
     """
@@ -106,7 +106,7 @@ def _resolve_daemon_pid(adapter: ReadOnlyAdapter) -> Optional[int]:
         return os.getpid()
     # Live adapter fallback: pid file written by the daemon. Skip if
     # the PID is dead (e.g. stale pidfile from a previous boot).
-    pid_path = os.path.expanduser("~/.config/skein/daemon.pid")
+    pid_path = os.path.expanduser("~/.config/wevex/daemon.pid")
     if os.path.exists(pid_path):
         try:
             pid = int(open(pid_path).read().strip())

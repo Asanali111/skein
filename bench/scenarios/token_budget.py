@@ -1,9 +1,9 @@
 """Token-budget scenario — iter 31 regression antibody.
 
-Skein's first-class promise is "more context, fewer tokens". When that
+Wevex's first-class promise is "more context, fewer tokens". When that
 ratio flips — when a single ``recall(limit=10)`` ships kilobytes of text
 into the LLM's prompt — speculative recall calls get expensive, agents
-stop reaching for the tool, and Skein silently loses its place in the
+stop reaching for the tool, and Wevex silently loses its place in the
 LLM's toolkit. This scenario catches that regression before it ships.
 
 Measures, against the seeded 25-fragment corpus over the 12 labeled

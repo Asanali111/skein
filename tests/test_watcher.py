@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from skein.embeddings import HashEmbeddingProvider
-from skein.models import IdentityCreate, ScopeCreate
-from skein.watcher import _PollingWatcher, _WatchdogWatcher, make_watcher
+from wevex.embeddings import HashEmbeddingProvider
+from wevex.models import IdentityCreate, ScopeCreate
+from wevex.watcher import _PollingWatcher, _WatchdogWatcher, make_watcher
 
 
 @pytest.fixture
@@ -226,7 +226,7 @@ class TestPollingWatcher:
 class TestFactory:
     def test_picks_watchdog_when_available(self, watch_setup, monkeypatch):
         # Don't actually start; just check the type
-        from skein import watcher as wmod
+        from wevex import watcher as wmod
         monkeypatch.setattr(wmod, "_watchdog_available", lambda: True)
         w = make_watcher(
             watch_setup["root"], watch_setup["scope_id"], "watched_proj",
@@ -238,7 +238,7 @@ class TestFactory:
             w.stop()
 
     def test_falls_back_to_polling(self, watch_setup, monkeypatch):
-        from skein import watcher as wmod
+        from wevex import watcher as wmod
         monkeypatch.setattr(wmod, "_watchdog_available", lambda: False)
         w = make_watcher(
             watch_setup["root"], watch_setup["scope_id"], "watched_proj",

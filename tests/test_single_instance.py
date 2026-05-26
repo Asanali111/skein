@@ -1,6 +1,6 @@
 """Iter 35: single-instance file lock for the daemon.
 
-The lock module is meant to prevent a second ``skein serve`` from running
+The lock module is meant to prevent a second ``wevex serve`` from running
 in parallel with an existing daemon — the exact failure mode that put a
 leftover 8766 daemon alongside 8765 for three days. These tests verify:
 
@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from skein import single_instance
+from wevex import single_instance
 
 
 @pytest.fixture
@@ -97,7 +97,7 @@ def test_subprocess_holding_lock_blocks_other_process(lock_path: Path) -> None:
     holder_script = textwrap.dedent(f"""
         import sys, time
         sys.path.insert(0, {str(Path(__file__).resolve().parents[1])!r})
-        from skein import single_instance
+        from wevex import single_instance
         from pathlib import Path
         r = single_instance.acquire(Path({str(lock_path)!r}))
         if not r.acquired:

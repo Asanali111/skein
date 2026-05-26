@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from skein.scanner import (
+from wevex.scanner import (
     AUTO_PROMOTE_THRESHOLD,
     DISCARD_THRESHOLD,
     ScannedFact,

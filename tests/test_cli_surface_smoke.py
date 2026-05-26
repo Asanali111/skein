@@ -1,7 +1,7 @@
 """ADR-002 smoke test: the 10-command surface composes without breaking.
 
 Each individual command has its own focused tests elsewhere. This file
-exercises the *composition* — that `skein --help` advertises the right
+exercises the *composition* — that `wevex --help` advertises the right
 top-level commands, that the new flags on `doctor`, `briefing`, and
 `connect` parse, and that `status` includes the sections we folded into it
 (clients, inbox depth).
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from click.testing import CliRunner
 
-from skein.cli import main
+from wevex.cli import main
 
 
 def _help(*argv) -> str:
@@ -35,7 +35,7 @@ VISIBLE_TOP_LEVEL = {
 
 
 def test_top_level_help_shows_canonical_surface() -> None:
-    """Every command in VISIBLE_TOP_LEVEL must appear in `skein --help`.
+    """Every command in VISIBLE_TOP_LEVEL must appear in `wevex --help`.
 
     Reverse direction (no extra commands beyond the visible set) is NOT
     asserted yet — Phase D will hide the rest with hidden=True, at which
@@ -56,7 +56,7 @@ def test_doctor_has_clean_and_reingest_flags() -> None:
     assert "--reingest" in out
     # The help text must mention what these flags replace so a user
     # reading docs in iter 26 sees the migration story.
-    assert "skein gc" in out or "gc" in out  # --clean replaces gc
+    assert "wevex gc" in out or "gc" in out  # --clean replaces gc
     assert "ingest" in out                   # --reingest replaces ingest
 
 
@@ -92,8 +92,8 @@ def test_status_offline_renders_without_clients_section() -> None:
     not a failure path."""
     # Use a bogus port so we don't hit a running daemon.
     runner = CliRunner()
-    r = runner.invoke(main, ["status"], env={"SKEIN_PORT": "1"})
+    r = runner.invoke(main, ["status"], env={"WEVEX_PORT": "1"})
     # Exit code 1 is correct: status exits non-zero when offline. The
     # important assertion is no exception traceback in stderr.
     assert r.exit_code == 1
-    assert "offline" in r.output.lower() or "skein is offline" in r.output.lower()
+    assert "offline" in r.output.lower() or "wevex is offline" in r.output.lower()

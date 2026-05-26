@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from skein.config import SkeinConfig, reset_config
-from skein.hooks import (
+from wevex.config import WevexConfig, reset_config
+from wevex.hooks import (
     _extract_decisions,
     _path_to_territory,
     post_tool_use,
@@ -21,25 +21,25 @@ from skein.hooks import (
     stop,
     user_prompt_submit,
 )
-from skein.hooks_install import install_hooks, uninstall_hooks
+from wevex.hooks_install import install_hooks, uninstall_hooks
 
 
 # ---------------------------------------------------------------------------
-# Fixture: configure Skein for hook tests
+# Fixture: configure Wevex for hook tests
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
 def hook_env(tmp_path, monkeypatch):
-    """Set up a fresh DB and pin SKEIN_SCOPE so hooks find a clean scope."""
+    """Set up a fresh DB and pin WEVEX_SCOPE so hooks find a clean scope."""
     db_path = tmp_path / "hooks.db"
-    cfg = SkeinConfig({
+    cfg = WevexConfig({
         "db_path": str(db_path),
         "bearer_token": "x" * 64,
         "embedding_provider": "hash",
         "default_scope": "project:hooktest",
     })
     reset_config(cfg)
-    monkeypatch.setenv("SKEIN_SCOPE", "project:hooktest")
+    monkeypatch.setenv("WEVEX_SCOPE", "project:hooktest")
     monkeypatch.chdir(tmp_path)
     yield {"tmp_path": tmp_path, "db_path": db_path, "cfg": cfg}
     reset_config(None)
@@ -104,15 +104,15 @@ class TestSessionStart:
         assert out == "" or out.strip() == ""
 
     def test_injects_recent_decisions(self, hook_env, capsys):
-        from skein.models import FragmentCreate, IdentityCreate
-        from skein.storage import Storage
+        from wevex.models import FragmentCreate, IdentityCreate
+        from wevex.storage import Storage
 
         s = Storage(str(hook_env["db_path"]))
         # Seed a scope owner + scope, then a decision fragment
         owner = s.create_identity(IdentityCreate(
             handle="user:alice", type="user", name="Alice",
         ))
-        from skein.models import ScopeCreate
+        from wevex.models import ScopeCreate
         scope = s.create_scope(ScopeCreate(
             handle="project:hooktest", type="project",
             name="Hook Test", owner_id=owner.id,
@@ -156,9 +156,9 @@ class TestUserPromptSubmit:
         assert capsys.readouterr().out == ""
 
     def test_with_match_emits_context(self, hook_env, capsys):
-        from skein.models import FragmentCreate, IdentityCreate, ScopeCreate
-        from skein.storage import Storage
-        from skein.embeddings import HashEmbeddingProvider, vec_to_bytes
+        from wevex.models import FragmentCreate, IdentityCreate, ScopeCreate
+        from wevex.storage import Storage
+        from wevex.embeddings import HashEmbeddingProvider, vec_to_bytes
 
         s = Storage(str(hook_env["db_path"]))
         provider = HashEmbeddingProvider()
@@ -199,8 +199,8 @@ class TestUserPromptSubmit:
 
 class TestStopHook:
     def test_extracts_decision_into_storage(self, hook_env):
-        from skein.storage import Storage
-        from skein.models import IdentityCreate, ScopeCreate
+        from wevex.storage import Storage
+        from wevex.models import IdentityCreate, ScopeCreate
 
         # Pre-create scope for hook to use (avoid auto-create owner mismatch)
         s = Storage(str(hook_env["db_path"]))
@@ -229,7 +229,7 @@ class TestStopHook:
         assert any("auto-extracted" in f.tags for f in decisions)
 
     def test_no_decision_no_fragment(self, hook_env):
-        from skein.storage import Storage
+        from wevex.storage import Storage
 
         rc = stop(json.dumps({"transcript": "The cat sat on the mat. The end."}))
         assert rc == 0
@@ -242,8 +242,8 @@ class TestStopHook:
         s.close()
 
     def test_handles_message_list_format(self, hook_env):
-        from skein.storage import Storage
-        from skein.models import IdentityCreate, ScopeCreate
+        from wevex.storage import Storage
+        from wevex.models import IdentityCreate, ScopeCreate
 
         s = Storage(str(hook_env["db_path"]))
         owner = s.create_identity(IdentityCreate(
@@ -280,14 +280,14 @@ class TestPostToolUse:
 
     The previous implementation captured every Edit/Write as a bare
     "Edit on /path/to/file.py" observation fragment. Those carry zero
-    signal for the AI consuming Skein context (the file path is already
+    signal for the AI consuming Wevex context (the file path is already
     visible in the agent's tool call), and they polluted SessionStart
     injection with duplicates. The hook stays wired so client config
     doesn't break, but it never writes."""
 
     def test_does_not_write_observation_for_edit(self, hook_env):
-        from skein.storage import Storage
-        from skein.models import IdentityCreate, ScopeCreate
+        from wevex.storage import Storage
+        from wevex.models import IdentityCreate, ScopeCreate
 
         s = Storage(str(hook_env["db_path"]))
         owner = s.create_identity(IdentityCreate(
@@ -336,13 +336,13 @@ class TestPostToolUse:
 
 class TestHooksInstall:
     def test_install_writes_scope_pin(self, tmp_path):
-        report = install_hooks(tmp_path, "project:test", skein_bin="skein")
-        scope_file = tmp_path / ".skein" / "scope"
+        report = install_hooks(tmp_path, "project:test", wevex_bin="wevex")
+        scope_file = tmp_path / ".wevex" / "scope"
         assert scope_file.exists()
         assert scope_file.read_text().strip() == "project:test"
 
     def test_install_writes_claude_settings(self, tmp_path):
-        install_hooks(tmp_path, "project:test", skein_bin="skein")
+        install_hooks(tmp_path, "project:test", wevex_bin="wevex")
         settings_path = tmp_path / ".claude" / "settings.json"
         assert settings_path.exists()
         data = json.loads(settings_path.read_text())
@@ -351,18 +351,18 @@ class TestHooksInstall:
         assert "Stop" in data["hooks"]
         # Check our managed marker is present
         block = data["hooks"]["SessionStart"][0]
-        assert block.get("__skein_managed") is True
+        assert block.get("__wevex_managed") is True
         cmd = block["hooks"][0]["command"]
-        assert "skein hook session-start" in cmd
-        # Iter 27 Windows port: SKEIN_SCOPE prefix dropped (POSIX-only shell
+        assert "wevex hook session-start" in cmd
+        # Iter 27 Windows port: WEVEX_SCOPE prefix dropped (POSIX-only shell
         # syntax, breaks on cmd.exe). Scope is resolved by the hook process
-        # via .skein/scope walk-up from Claude Code's cwd; that pin file is
+        # via .wevex/scope walk-up from Claude Code's cwd; that pin file is
         # written by install_hooks() so the contract still holds.
-        assert "SKEIN_SCOPE=" not in cmd
+        assert "WEVEX_SCOPE=" not in cmd
 
     def test_install_writes_cursor_rule(self, tmp_path):
-        install_hooks(tmp_path, "project:cursortest", skein_bin="skein")
-        rule_path = tmp_path / ".cursor" / "rules" / "skein.mdc"
+        install_hooks(tmp_path, "project:cursortest", wevex_bin="wevex")
+        rule_path = tmp_path / ".cursor" / "rules" / "wevex.mdc"
         assert rule_path.exists()
         content = rule_path.read_text()
         assert "alwaysApply: true" in content
@@ -384,29 +384,29 @@ class TestHooksInstall:
         }
         (settings_dir / "settings.json").write_text(json.dumps(existing))
 
-        install_hooks(tmp_path, "project:test", skein_bin="skein")
+        install_hooks(tmp_path, "project:test", wevex_bin="wevex")
 
         data = json.loads((settings_dir / "settings.json").read_text())
         # Original user hook still present
         sessions = data["hooks"]["SessionStart"]
         assert len(sessions) == 2
         assert any(b.get("hooks", [{}])[0].get("command") == "user-tool" for b in sessions)
-        # Skein hook also present
-        assert any(b.get("__skein_managed") for b in sessions)
+        # Wevex hook also present
+        assert any(b.get("__wevex_managed") for b in sessions)
         # Other settings preserved
         assert data["model"] == "claude-opus-4"
 
     def test_install_idempotent(self, tmp_path):
-        install_hooks(tmp_path, "project:test", skein_bin="skein")
-        install_hooks(tmp_path, "project:test", skein_bin="skein")  # again
+        install_hooks(tmp_path, "project:test", wevex_bin="wevex")
+        install_hooks(tmp_path, "project:test", wevex_bin="wevex")  # again
         data = json.loads((tmp_path / ".claude" / "settings.json").read_text())
-        # Only one Skein-managed block per event
+        # Only one Wevex-managed block per event
         for event_name, blocks in data["hooks"].items():
-            managed = [b for b in blocks if b.get("__skein_managed")]
-            assert len(managed) == 1, f"Duplicate Skein blocks in {event_name}"
+            managed = [b for b in blocks if b.get("__wevex_managed")]
+            assert len(managed) == 1, f"Duplicate Wevex blocks in {event_name}"
 
-    def test_uninstall_strips_skein_only(self, tmp_path):
-        install_hooks(tmp_path, "project:test", skein_bin="skein")
+    def test_uninstall_strips_wevex_only(self, tmp_path):
+        install_hooks(tmp_path, "project:test", wevex_bin="wevex")
         # Add a user hook alongside
         settings_path = tmp_path / ".claude" / "settings.json"
         data = json.loads(settings_path.read_text())
@@ -424,11 +424,11 @@ class TestHooksInstall:
             b.get("hooks", [{}])[0].get("command") == "user-stop"
             for b in stop_hooks
         )
-        # No Skein-managed entries left
+        # No Wevex-managed entries left
         for event_name, blocks in data.get("hooks", {}).items():
-            assert not any(b.get("__skein_managed") for b in blocks)
+            assert not any(b.get("__wevex_managed") for b in blocks)
 
         # Cursor rule deleted
-        assert not (tmp_path / ".cursor" / "rules" / "skein.mdc").exists()
+        assert not (tmp_path / ".cursor" / "rules" / "wevex.mdc").exists()
         # Scope pin deleted
-        assert not (tmp_path / ".skein" / "scope").exists()
+        assert not (tmp_path / ".wevex" / "scope").exists()

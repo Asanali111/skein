@@ -1,27 +1,27 @@
 #!/usr/bin/env sh
-# Skein installer — one-time bootstrap.
+# Wevex installer — one-time bootstrap.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/ameliomar/skein/main/bin/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/ameliomar/wevex/main/bin/install.sh | sh
 # or, when run from inside the cloned repo:
 #   ./bin/install.sh
 #
 # What it does:
 #   1. Verify Python 3.9+
-#   2. Create a venv at ~/.skein/venv
-#   3. pip install Skein into it (from the repo we're invoked from, or git-clone)
-#   4. Symlink the `skein` binary onto your PATH
+#   2. Create a venv at ~/.wevex/venv
+#   3. pip install Wevex into it (from the repo we're invoked from, or git-clone)
+#   4. Symlink the `wevex` binary onto your PATH
 #       (prefers /usr/local/bin, falls back to ~/.local/bin if not writable)
-#   5. Print "now run `skein up`"
+#   5. Print "now run `wevex up`"
 #
 # Idempotent — safe to re-run; updates an existing install in place.
 
 set -eu
 
-REPO_URL="${SKEIN_REPO:-https://github.com/ameliomar/skein.git}"
-SKEIN_HOME="${SKEIN_HOME:-$HOME/.skein}"
-SOURCE_DIR="$SKEIN_HOME/source"
-VENV_DIR="$SKEIN_HOME/venv"
+REPO_URL="${WEVEX_REPO:-https://github.com/ameliomar/wevex.git}"
+WEVEX_HOME="${WEVEX_HOME:-$HOME/.wevex}"
+SOURCE_DIR="$WEVEX_HOME/source"
+VENV_DIR="$WEVEX_HOME/venv"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -55,19 +55,19 @@ ok "Found $($PYTHON --version) at $(command -v "$PYTHON")"
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 PROJECT_ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
-if [ -f "$PROJECT_ROOT/pyproject.toml" ] && [ -d "$PROJECT_ROOT/skein" ]; then
+if [ -f "$PROJECT_ROOT/pyproject.toml" ] && [ -d "$PROJECT_ROOT/wevex" ]; then
   # We're being run from inside a checkout — install from there
   SOURCE_DIR="$PROJECT_ROOT"
   ok "Installing from local checkout: $SOURCE_DIR"
 else
-  # curl|sh path: clone or update into ~/.skein/source
+  # curl|sh path: clone or update into ~/.wevex/source
   need git
   if [ -d "$SOURCE_DIR/.git" ]; then
     say "  Updating $SOURCE_DIR …"
     git -C "$SOURCE_DIR" pull --ff-only --quiet || warn "git pull failed; continuing with existing source"
   else
     say "  Cloning $REPO_URL → $SOURCE_DIR …"
-    mkdir -p "$SKEIN_HOME"
+    mkdir -p "$WEVEX_HOME"
     git clone --quiet "$REPO_URL" "$SOURCE_DIR"
   fi
   ok "Source ready at $SOURCE_DIR"
@@ -83,12 +83,12 @@ if [ ! -d "$VENV_DIR" ]; then
 fi
 
 VENV_PIP="$VENV_DIR/bin/pip"
-VENV_SKEIN="$VENV_DIR/bin/skein"
+VENV_SKEIN="$VENV_DIR/bin/wevex"
 
-say "  Installing Skein …"
+say "  Installing Wevex …"
 "$VENV_PIP" install --quiet --upgrade pip
 "$VENV_PIP" install --quiet -e "$SOURCE_DIR"
-ok "Skein installed in $VENV_DIR"
+ok "Wevex installed in $VENV_DIR"
 
 [ -x "$VENV_SKEIN" ] || die "Install completed but $VENV_SKEIN is not executable."
 
@@ -99,20 +99,20 @@ LINK_TARGET=""
 case ":$PATH:" in
   *":/usr/local/bin:"*)
     if [ -w /usr/local/bin ] || [ "$(id -u)" = "0" ]; then
-      LINK_TARGET=/usr/local/bin/skein
+      LINK_TARGET=/usr/local/bin/wevex
     fi ;;
 esac
 if [ -z "$LINK_TARGET" ]; then
   case ":$PATH:" in
     *":$HOME/.local/bin:"*)
-      LINK_TARGET="$HOME/.local/bin/skein"
+      LINK_TARGET="$HOME/.local/bin/wevex"
       mkdir -p "$HOME/.local/bin" ;;
   esac
 fi
 if [ -z "$LINK_TARGET" ]; then
   # PATH doesn't contain a writable dir we like — fall back to ~/.local/bin
   # and warn the user to add it
-  LINK_TARGET="$HOME/.local/bin/skein"
+  LINK_TARGET="$HOME/.local/bin/wevex"
   mkdir -p "$HOME/.local/bin"
   warn "Adding ~/.local/bin to your PATH is recommended:"
   warn "    echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc"
@@ -126,10 +126,10 @@ ok "Symlinked $VENV_SKEIN → $LINK_TARGET"
 # ---------------------------------------------------------------------------
 INSTALLED_VERSION="$("$VENV_SKEIN" --version 2>/dev/null | awk '{print $NF}' || true)"
 say ""
-ok "Skein ${INSTALLED_VERSION:-installed}.  Now run:"
+ok "Wevex ${INSTALLED_VERSION:-installed}.  Now run:"
 say ""
 say "    cd ~/Documents/your-project"
-say "    skein up"
+say "    wevex up"
 say ""
 say "That's it. Every connected LLM (Claude Code, Cursor, Codex, Gemini CLI,"
 say "Antigravity, …) will share the same context for that project."

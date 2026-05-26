@@ -1,6 +1,6 @@
 """Tests for the Textual TUI (iter 21).
 
-The TUI is async and screen-based, so every test instantiates ``SkeinApp``
+The TUI is async and screen-based, so every test instantiates ``WevexApp``
 with an injected mock ``DaemonClient`` (real daemon never required). The
 Textual ``Pilot`` harness drives keypresses and inspects the live widget
 tree.
@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 import pytest
 
-from skein.tui.app import SkeinApp
+from wevex.tui.app import WevexApp
 
 # ---------------------------------------------------------------------------
 # Mock daemon client
@@ -121,9 +121,9 @@ class FakeClient:
         pass
 
 
-def _make_app(*, raise_on: Optional[List[str]] = None) -> SkeinApp:
-    """Build a SkeinApp wired to a FakeClient with no daemon round trips."""
-    return SkeinApp(
+def _make_app(*, raise_on: Optional[List[str]] = None) -> WevexApp:
+    """Build a WevexApp wired to a FakeClient with no daemon round trips."""
+    return WevexApp(
         scope="project:test-scope",
         client_factory=lambda: FakeClient(raise_on=raise_on),
     )
@@ -135,8 +135,8 @@ def _make_app(*, raise_on: Optional[List[str]] = None) -> SkeinApp:
 
 def test_app_imports_cleanly() -> None:
     """The simplest possible smoke — the module imports + class exists."""
-    from skein.tui.app import SkeinApp as _SkeinApp
-    assert _SkeinApp is SkeinApp
+    from wevex.tui.app import WevexApp as _WevexApp
+    assert _WevexApp is WevexApp
 
 
 @pytest.mark.asyncio
@@ -148,7 +148,7 @@ async def test_app_renders_briefing_offline() -> None:
         await pilot.pause()
         await pilot.pause()
         # Header reflects the injected scope.
-        from skein.tui.widgets.health_dot import HealthHeader
+        from wevex.tui.widgets.health_dot import HealthHeader
         header = app.query_one(HealthHeader)
         assert header.scope == "project:test-scope"
         # Briefing pane shows the canned fragment_total.
@@ -176,7 +176,7 @@ async def test_app_handles_daemon_down() -> None:
         rendered = str(banner.render())
         assert "daemon not running" in rendered.lower()
         # Health header reflects the failure.
-        from skein.tui.widgets.health_dot import HealthHeader
+        from wevex.tui.widgets.health_dot import HealthHeader
         header = app.query_one(HealthHeader)
         assert header.healthy is False
 
@@ -184,7 +184,7 @@ async def test_app_handles_daemon_down() -> None:
 @pytest.mark.asyncio
 async def test_help_modal_opens_and_dismisses() -> None:
     """Press '?' to open help, escape to dismiss; modal mounts a help-dialog."""
-    from skein.tui.screens.help_modal import HelpModal
+    from wevex.tui.screens.help_modal import HelpModal
 
     app = _make_app()
     async with app.run_test() as pilot:

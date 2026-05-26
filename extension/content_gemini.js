@@ -1,4 +1,4 @@
-// Skein content script — gemini.google.com
+// Wevex content script — gemini.google.com
 //
 // Site-specific selectors only. Shared core in content_common.js.
 //
@@ -35,7 +35,7 @@
     );
   }
 
-  // Iter 35: assistant turns for Save-to-Skein. Gemini renders the
+  // Iter 35: assistant turns for Save-to-Wevex. Gemini renders the
   // model response inside `<message-content>` Angular components; some
   // rollouts use `.model-response-text` as the primary class on the
   // text container. We probe in priority order.
@@ -48,12 +48,12 @@
     return Array.from(nodes);
   }
 
-  if (!globalThis.__SkeinCommon) {
-    console.warn("[skein] content_common.js not loaded; aborting gemini.google.com script");
+  if (!globalThis.__WevexCommon) {
+    console.warn("[wevex] content_common.js not loaded; aborting gemini.google.com script");
     return;
   }
 
-  globalThis.__SkeinCommon.init({
+  globalThis.__WevexCommon.init({
     siteName: "gemini.google.com",
     findPromptElement,
     findSendButton,

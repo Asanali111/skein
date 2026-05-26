@@ -10,19 +10,19 @@ import pytest
 from fastapi.testclient import TestClient
 
 # Force hash embedding so tests work offline
-os.environ["SKEIN_EMBEDDING_PROVIDER"] = "hash"
+os.environ["WEVEX_EMBEDDING_PROVIDER"] = "hash"
 
 
 @pytest.fixture
 def tmp_db(tmp_path: Path) -> str:
     """Return a path to a fresh temp SQLite DB (auto-deleted)."""
-    return str(tmp_path / "test_skein.db")
+    return str(tmp_path / "test_wevex.db")
 
 
 @pytest.fixture
 def storage(tmp_db: str):
     """A fresh Storage instance backed by a temp DB."""
-    from skein.storage import Storage
+    from wevex.storage import Storage
     s = Storage(tmp_db)
     yield s
     s.close()
@@ -31,14 +31,14 @@ def storage(tmp_db: str):
 @pytest.fixture
 def provider():
     """Hash embedding provider (offline, deterministic)."""
-    from skein.embeddings import HashEmbeddingProvider
+    from wevex.embeddings import HashEmbeddingProvider
     return HashEmbeddingProvider()
 
 
 @pytest.fixture
 def seeded_storage(storage):
     """Storage with a default user identity and scope pre-created."""
-    from skein.models import IdentityCreate, ScopeCreate
+    from wevex.models import IdentityCreate, ScopeCreate
     user = storage.create_identity(IdentityCreate(
         handle="user:testuser", type="user", name="Test User",
     ))
@@ -61,13 +61,13 @@ TEST_TOKEN = "test-token-abcdef1234567890abcdef1234567890abcdef1234567890abcdef1
 @pytest.fixture
 def app(tmp_db: str):
     """A fully configured FastAPI test app backed by a temp DB."""
-    from skein.config import SkeinConfig, reset_config
-    from skein.dependencies import set_provider, set_storage
-    from skein.embeddings import HashEmbeddingProvider
-    from skein.server import create_app
-    from skein.storage import Storage
+    from wevex.config import WevexConfig, reset_config
+    from wevex.dependencies import set_provider, set_storage
+    from wevex.embeddings import HashEmbeddingProvider
+    from wevex.server import create_app
+    from wevex.storage import Storage
 
-    cfg = SkeinConfig({
+    cfg = WevexConfig({
         "db_path": tmp_db,
         "bearer_token": TEST_TOKEN,
         "embedding_provider": "hash",

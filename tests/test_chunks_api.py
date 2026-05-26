@@ -1,8 +1,8 @@
 """REST + MCP integration tests for the chunks (codebase RAG) layer."""
 from __future__ import annotations
 
-from skein.embeddings import HashEmbeddingProvider, vec_to_bytes
-from skein.models import ChunkCreate, IdentityCreate, ScopeCreate
+from wevex.embeddings import HashEmbeddingProvider, vec_to_bytes
+from wevex.models import ChunkCreate, IdentityCreate, ScopeCreate
 
 
 # ---------------------------------------------------------------------------
@@ -10,7 +10,7 @@ from skein.models import ChunkCreate, IdentityCreate, ScopeCreate
 # ---------------------------------------------------------------------------
 
 def _seed(authed_client, app, *, scope_handle="project:codetest"):
-    from skein.dependencies import get_storage
+    from wevex.dependencies import get_storage
     storage = get_storage()
     # Owner identity
     owner = storage.get_or_create_identity(IdentityCreate(
@@ -184,7 +184,7 @@ class TestSearchCodeMCP:
 
     def test_tool_call_no_chunks(self, authed_client, app):
         # Create the scope but no chunks
-        from skein.dependencies import get_storage
+        from wevex.dependencies import get_storage
         storage = get_storage()
         owner = storage.get_or_create_identity(IdentityCreate(
             handle="user:empty", type="user", name="Empty",
@@ -204,4 +204,4 @@ class TestSearchCodeMCP:
         assert resp.status_code == 200
         text = resp.json()["result"]["content"][0]["text"]
         assert "No code chunks" in text
-        assert "skein ingest" in text  # tells the agent how to fix it
+        assert "wevex ingest" in text  # tells the agent how to fix it

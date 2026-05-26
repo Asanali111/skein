@@ -1,11 +1,11 @@
 """Iter 32 antibodies — auto-capture + relevance marker + note() tool.
 
 These tests pin the iter-32 structural fixes for "LLMs forget to write
-to Skein":
+to Wevex":
   - git_watcher walks ``--branches`` (catches feat/* and experiment/*)
   - non-conv commits with substantive bodies bump to 0.90 (auto-promote)
   - transcript_watcher smart-only filter keeps only ≥0.90 patterns
-  - recall response carries a ``[skein:relevance=…]`` marker (extension
+  - recall response carries a ``[wevex:relevance=…]`` marker (extension
     reads this to skip injection on low/none and stop wasting tokens)
   - note() one-arg MCP tool auto-classifies into a fragment type
 """
@@ -27,7 +27,7 @@ class TestGitWatcherConfidence:
     non-conv short → 0.75. AUTO_PROMOTE_THRESHOLD is 0.90."""
 
     def _make_commit(self, subject: str, body: str = ""):
-        from skein.git_watcher import GitCommit
+        from wevex.git_watcher import GitCommit
         return GitCommit(
             sha="abc1234567" + "0" * 30,
             author_name="x", author_email="x@example",
@@ -36,15 +36,15 @@ class TestGitWatcherConfidence:
         )
 
     def test_conventional_commit_auto_promotes(self):
-        from skein.git_watcher import commit_to_fact
-        from skein.scanner import AUTO_PROMOTE_THRESHOLD
+        from wevex.git_watcher import commit_to_fact
+        from wevex.scanner import AUTO_PROMOTE_THRESHOLD
         c = self._make_commit("feat(daemon): add the thing")
         fact = commit_to_fact(c)
         assert fact.confidence >= AUTO_PROMOTE_THRESHOLD
 
     def test_non_conv_with_long_body_auto_promotes(self):
-        from skein.git_watcher import commit_to_fact
-        from skein.scanner import AUTO_PROMOTE_THRESHOLD
+        from wevex.git_watcher import commit_to_fact
+        from wevex.scanner import AUTO_PROMOTE_THRESHOLD
         long_body = "x" * 350
         c = self._make_commit("ship something big", body=long_body)
         fact = commit_to_fact(c)
@@ -55,8 +55,8 @@ class TestGitWatcherConfidence:
         )
 
     def test_non_conv_short_stays_in_inbox(self):
-        from skein.git_watcher import commit_to_fact
-        from skein.scanner import AUTO_PROMOTE_THRESHOLD
+        from wevex.git_watcher import commit_to_fact
+        from wevex.scanner import AUTO_PROMOTE_THRESHOLD
         c = self._make_commit("quick fix", body="oops")
         fact = commit_to_fact(c)
         assert fact.confidence < AUTO_PROMOTE_THRESHOLD
@@ -64,11 +64,11 @@ class TestGitWatcherConfidence:
 
 class TestGitWatcherBranchesArg:
     """``read_commits_since`` must pass ``--branches`` to git so commits on
-    feat/* and experiment/* branches reach Skein without first being merged
+    feat/* and experiment/* branches reach Wevex without first being merged
     to main. Iter 28-31 sat invisible for exactly this reason."""
 
     def test_read_commits_since_uses_branches_arg(self, tmp_path, monkeypatch):
-        from skein import git_watcher
+        from wevex import git_watcher
         captured: dict = {}
 
         def fake_run(args, capture_output=True, text=True, timeout=None):
@@ -85,7 +85,7 @@ class TestGitWatcherBranchesArg:
         assert "--branches" in captured["args"]
 
     def test_since_sha_passes_exclude_syntax(self, tmp_path, monkeypatch):
-        from skein import git_watcher
+        from wevex import git_watcher
         captured: dict = {}
 
         def fake_run(args, capture_output=True, text=True, timeout=None):
@@ -114,7 +114,7 @@ class TestTranscriptSmartOnly:
     legacy 0.62–0.86 patterns that have historically polluted the inbox."""
 
     def test_iter_shipped_matches_under_smart_only(self):
-        from skein.transcript_watcher import extract_from_text
+        from wevex.transcript_watcher import extract_from_text
         facts = extract_from_text(
             "Iter 31 SHIPPED — snippet rendering + 30s cache + dedupe.",
             role="assistant", smart_only=True,
@@ -123,7 +123,7 @@ class TestTranscriptSmartOnly:
         assert any(f.confidence >= 0.90 for f in facts)
 
     def test_decided_to_matches_under_smart_only(self):
-        from skein.transcript_watcher import extract_from_text
+        from wevex.transcript_watcher import extract_from_text
         facts = extract_from_text(
             "Decided to drop the old GeminiEmbeddingProvider.",
             role="assistant", smart_only=True,
@@ -132,7 +132,7 @@ class TestTranscriptSmartOnly:
         assert all(f.confidence >= 0.90 for f in facts)
 
     def test_loose_pattern_filtered_under_smart_only(self):
-        from skein.transcript_watcher import extract_from_text
+        from wevex.transcript_watcher import extract_from_text
         facts = extract_from_text(
             "i prefer flat directory structures",
             role="user", smart_only=True,
@@ -143,7 +143,7 @@ class TestTranscriptSmartOnly:
         )
 
     def test_loose_pattern_still_works_when_smart_only_false(self):
-        from skein.transcript_watcher import extract_from_text
+        from wevex.transcript_watcher import extract_from_text
         facts = extract_from_text(
             "i prefer flat directory structures",
             role="user", smart_only=False,
@@ -158,7 +158,7 @@ class TestTranscriptSmartOnly:
 
 class TestRecallRelevanceMarker:
     """The recall handler MUST prefix the rendered text with a
-    ``[skein:relevance=…]`` line so the browser extension can parse it and
+    ``[wevex:relevance=…]`` line so the browser extension can parse it and
     skip injection on low/none — the headline token-waste fix of iter 32.
     """
 
@@ -166,8 +166,8 @@ class TestRecallRelevanceMarker:
         self, authed_client, app,
     ):
         # Seed a fragment so recall returns ≥1 result.
-        from skein.dependencies import get_storage
-        from skein.models import (
+        from wevex.dependencies import get_storage
+        from wevex.models import (
             FragmentCreate, IdentityCreate, ScopeCreate,
         )
         storage = get_storage()
@@ -200,7 +200,7 @@ class TestRecallRelevanceMarker:
         assert resp.status_code == 200, resp.text
         text = resp.json()["result"]["content"][0]["text"]
         first_line = text.splitlines()[0].strip()
-        assert first_line.startswith("[skein:relevance="), (
+        assert first_line.startswith("[wevex:relevance="), (
             f"recall response must start with relevance marker. Got: {first_line!r}"
         )
         assert first_line.endswith("]")
@@ -208,8 +208,8 @@ class TestRecallRelevanceMarker:
     def test_relevance_none_when_scope_empty(self, authed_client, app):
         # An empty scope should produce relevance=none (or the low-signal
         # nudge path, which also includes the marker).
-        from skein.dependencies import get_storage
-        from skein.models import IdentityCreate, ScopeCreate
+        from wevex.dependencies import get_storage
+        from wevex.models import IdentityCreate, ScopeCreate
         storage = get_storage()
         owner = storage.get_or_create_identity(IdentityCreate(
             handle="user:empty32", type="user", name="Empty",
@@ -232,7 +232,7 @@ class TestRecallRelevanceMarker:
         assert resp.status_code == 200
         text = resp.json()["result"]["content"][0]["text"]
         # Marker must be present at the top
-        assert "[skein:relevance=" in text.splitlines()[0]
+        assert "[wevex:relevance=" in text.splitlines()[0]
 
 
 # ---------------------------------------------------------------------------
@@ -256,8 +256,8 @@ class TestNoteTool:
         assert "note" in names
 
     def test_note_classifies_decision(self, authed_client, app):
-        from skein.dependencies import get_storage
-        from skein.models import IdentityCreate, ScopeCreate
+        from wevex.dependencies import get_storage
+        from wevex.models import IdentityCreate, ScopeCreate
         storage = get_storage()
         owner = storage.get_or_create_identity(IdentityCreate(
             handle="user:notetest", type="user", name="Note Test",
@@ -281,8 +281,8 @@ class TestNoteTool:
         assert "decision" in text.lower()
 
     def test_note_persists_findable_fragment(self, authed_client, app):
-        from skein.dependencies import get_storage
-        from skein.models import IdentityCreate, ScopeCreate
+        from wevex.dependencies import get_storage
+        from wevex.models import IdentityCreate, ScopeCreate
         storage = get_storage()
         owner = storage.get_or_create_identity(IdentityCreate(
             handle="user:notepersist", type="user", name="Note Persist",

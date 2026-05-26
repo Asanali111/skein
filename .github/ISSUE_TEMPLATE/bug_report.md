@@ -1,13 +1,13 @@
 ---
 name: Bug report
-about: Something Skein did wrong
+about: Something Wevex did wrong
 title: ""
 labels: bug
 ---
 
 ## What happened
 
-<!-- One or two sentences. What were you trying to do, what did Skein do instead? -->
+<!-- One or two sentences. What were you trying to do, what did Wevex do instead? -->
 
 ## How to reproduce
 
@@ -25,7 +25,7 @@ that triggers it. -->
 ## Diagnostics
 
 <details>
-<summary><code>skein doctor</code> output</summary>
+<summary><code>wevex doctor</code> output</summary>
 
 ```
 <paste here>
@@ -36,14 +36,14 @@ that triggers it. -->
 <summary>Recent daemon log</summary>
 
 ```
-<paste last ~40 lines from ~/.config/skein/logs/daemon.log
+<paste last ~40 lines from ~/.config/wevex/logs/daemon.log
  — strip anything you don't want public>
 ```
 </details>
 
 ## Environment
 
-- Skein version: <!-- `skein --version` -->
+- Wevex version: <!-- `wevex --version` -->
 - OS + version: <!-- macOS 14.5 / Ubuntu 22.04 / Windows 11 etc. -->
 - Python: <!-- `python3 --version` -->
 - Install path: <!-- pipx / uv / brew / pip / from source -->

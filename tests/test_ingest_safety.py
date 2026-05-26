@@ -1,6 +1,6 @@
 """Tests for the iteration-9 ingest safety guards.
 
-Triggered by: user ran ``skein up`` from ``$HOME``, Skein walked the entire
+Triggered by: user ran ``wevex up`` from ``$HOME``, Wevex walked the entire
 home directory and indexed ~45,000 chunks including Chrome password autofill
 data into a ``project:ameliomar`` scope. These tests pin the regressions:
 
@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from skein.ingest import (
+from wevex.ingest import (
     DEFAULT_EXCLUDES,
     SENSITIVE_FILENAME_FRAGMENTS,
     _refuse_root,

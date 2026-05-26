@@ -2,7 +2,7 @@
 
 We test the nohup backend (the only one that runs identically in CI without
 root or system services). launchd / systemd code paths are smoke-tested via
-the "_pick_backend" logic and on real hardware in `skein up`.
+the "_pick_backend" logic and on real hardware in `wevex up`.
 """
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from skein import daemon as daemon_mod
-from skein.daemon import DaemonStatus, current_status, ensure_running, stop
+from wevex import daemon as daemon_mod
+from wevex.daemon import DaemonStatus, current_status, ensure_running, stop
 
 
 # ---------------------------------------------------------------------------
@@ -26,13 +26,13 @@ def isolated_home(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     # Re-bind the module-level path constants because they're computed at import
     monkeypatch.setattr(daemon_mod, "LAUNCHD_PLIST",
-                        tmp_path / "Library/LaunchAgents/com.skein.daemon.plist")
+                        tmp_path / "Library/LaunchAgents/com.wevex.daemon.plist")
     monkeypatch.setattr(daemon_mod, "SYSTEMD_UNIT_PATH",
-                        tmp_path / ".config/systemd/user/skein.service")
+                        tmp_path / ".config/systemd/user/wevex.service")
     monkeypatch.setattr(daemon_mod, "NOHUP_PID_FILE",
-                        tmp_path / ".config/skein/daemon.pid")
+                        tmp_path / ".config/wevex/daemon.pid")
     monkeypatch.setattr(daemon_mod, "DAEMON_LOG_DIR",
-                        tmp_path / ".config/skein/logs")
+                        tmp_path / ".config/wevex/logs")
     return tmp_path
 
 
@@ -115,10 +115,10 @@ class TestNohupBackend:
             return _FakeProcess(pid=12345)
         monkeypatch.setattr("subprocess.Popen", fake_popen)
 
-        daemon_mod._start_nohup("/usr/local/bin/skein")
+        daemon_mod._start_nohup("/usr/local/bin/wevex")
         assert daemon_mod.NOHUP_PID_FILE.exists()
         assert daemon_mod.NOHUP_PID_FILE.read_text().strip() == "12345"
-        assert captured["cmd"] == ["/usr/local/bin/skein", "serve"]
+        assert captured["cmd"] == ["/usr/local/bin/wevex", "serve"]
         assert daemon_mod.DAEMON_LOG_DIR.exists()
 
     def test_stop_kills_pid(self, isolated_home, monkeypatch):
@@ -131,7 +131,7 @@ class TestNohupBackend:
         # ctypes). Monkeypatching the helper is more honest about the
         # contract than monkeypatching os.kill — and works on every
         # platform.
-        from skein import _proc
+        from wevex import _proc
         killed = []
         def fake_terminate(pid, **kwargs):
             killed.append(pid)
@@ -172,15 +172,15 @@ class TestTCCDetection:
     def test_documents_path_protected_on_macos(self, tmp_path, monkeypatch):
         monkeypatch.setattr("platform.system", lambda: "Darwin")
         monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
-        bad_path = tmp_path / "Documents" / "myproject" / ".venv" / "bin" / "skein"
+        bad_path = tmp_path / "Documents" / "myproject" / ".venv" / "bin" / "wevex"
         bad_path.parent.mkdir(parents=True)
         bad_path.touch()
         assert daemon_mod.is_tcc_protected_path(bad_path) is True
 
-    def test_skein_home_safe(self, tmp_path, monkeypatch):
+    def test_wevex_home_safe(self, tmp_path, monkeypatch):
         monkeypatch.setattr("platform.system", lambda: "Darwin")
         monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
-        good_path = tmp_path / ".skein" / "venv" / "bin" / "skein"
+        good_path = tmp_path / ".wevex" / "venv" / "bin" / "wevex"
         good_path.parent.mkdir(parents=True)
         good_path.touch()
         assert daemon_mod.is_tcc_protected_path(good_path) is False
@@ -189,13 +189,13 @@ class TestTCCDetection:
         monkeypatch.setattr("platform.system", lambda: "Darwin")
         monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
         # /usr/local is outside home — never TCC-protected
-        good_path = Path("/usr/local/bin/skein")
+        good_path = Path("/usr/local/bin/wevex")
         if good_path.exists():
             assert daemon_mod.is_tcc_protected_path(good_path) is False
 
     def test_always_false_on_linux(self, tmp_path, monkeypatch):
         monkeypatch.setattr("platform.system", lambda: "Linux")
-        bad_path = tmp_path / "Documents" / ".venv" / "bin" / "skein"
+        bad_path = tmp_path / "Documents" / ".venv" / "bin" / "wevex"
         bad_path.parent.mkdir(parents=True)
         bad_path.touch()
         assert daemon_mod.is_tcc_protected_path(bad_path) is False
@@ -212,10 +212,10 @@ class TestTCCDetection:
         """A symlink in /usr/local/bin pointing into Documents must be detected."""
         monkeypatch.setattr("platform.system", lambda: "Darwin")
         monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
-        real = tmp_path / "Documents" / "proj" / ".venv" / "bin" / "skein"
+        real = tmp_path / "Documents" / "proj" / ".venv" / "bin" / "wevex"
         real.parent.mkdir(parents=True)
         real.touch()
-        link = tmp_path / "fake-usr-local" / "skein"
+        link = tmp_path / "fake-usr-local" / "wevex"
         link.parent.mkdir(parents=True)
         link.symlink_to(real)
         assert daemon_mod.is_tcc_protected_path(link) is True
@@ -257,8 +257,8 @@ class TestRestartWaitsForSlowDaemon:
             return probe_count["n"] > flip_at
 
         monkeypatch.setattr(daemon_mod, "_check_health", fake_check_health)
-        monkeypatch.setattr(daemon_mod, "_resolve_skein_bin",
-                            lambda: "/usr/local/bin/skein")
+        monkeypatch.setattr(daemon_mod, "_resolve_wevex_bin",
+                            lambda: "/usr/local/bin/wevex")
         monkeypatch.setattr(daemon_mod, "_install_launchd", lambda *a, **k: None)
         monkeypatch.setattr(daemon_mod, "_install_systemd", lambda *a, **k: None)
         monkeypatch.setattr(daemon_mod, "_start_nohup", lambda *a, **k: None)

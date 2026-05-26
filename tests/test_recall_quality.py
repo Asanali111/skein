@@ -15,12 +15,12 @@ from __future__ import annotations
 
 import pytest
 
-from skein.embeddings import HashEmbeddingProvider, vec_to_bytes
-from skein.models import (
+from wevex.embeddings import HashEmbeddingProvider, vec_to_bytes
+from wevex.models import (
     FragmentCreate, RecallRequest, classify_recall_quality,
 )
-from skein.retrieval import _rrf_fuse, recall
-from skein.storage import Storage
+from wevex.retrieval import _rrf_fuse, recall
+from wevex.storage import Storage
 
 
 # ---------------------------------------------------------------------------

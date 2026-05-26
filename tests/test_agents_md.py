@@ -7,13 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from skein.agents_md import (
+from wevex.agents_md import (
     _extract_user_block,
     render_agents_md,
     render_claude_md_shim,
 )
-from skein.models import FragmentCreate, IdentityCreate, ScopeCreate
-from skein.storage import Storage
+from wevex.models import FragmentCreate, IdentityCreate, ScopeCreate
+from wevex.storage import Storage
 
 
 @pytest.fixture
@@ -57,7 +57,7 @@ def test_agents_md_has_header(populated_storage: Storage) -> None:
         daemon_url="http://127.0.0.1:8765",
     )
     assert "AGENTS.md" in content
-    assert "Skein" in content or "skein" in content
+    assert "Wevex" in content or "wevex" in content
     assert "http://127.0.0.1:8765/mcp" in content
 
 
@@ -123,7 +123,7 @@ Don't delete me!
 
 def test_agents_md_unknown_scope(storage: Storage) -> None:
     content = render_agents_md("project:no-such-scope", storage)
-    assert "not found" in content.lower() or "skein init" in content.lower()
+    assert "not found" in content.lower() or "wevex init" in content.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -161,8 +161,8 @@ def test_extract_user_block_whitespace_tolerance() -> None:
 # ---------------------------------------------------------------------------
 
 def test_sync_writes_cursor_mcp(tmp_path: Path, monkeypatch) -> None:
-    from skein.sync import sync_all
-    from skein import connections as conns
+    from wevex.sync import sync_all
+    from wevex import connections as conns
     monkeypatch.setattr(conns, "CONNECTIONS_PATH", tmp_path / "connections.json")
 
     result = sync_all(
@@ -177,13 +177,13 @@ def test_sync_writes_cursor_mcp(tmp_path: Path, monkeypatch) -> None:
     cursor_config = tmp_path / ".cursor" / "mcp.json"
     assert cursor_config.exists()
     data = json.loads(cursor_config.read_text())
-    assert "skein" in data["mcpServers"]
-    assert data["mcpServers"]["skein"]["url"] == "http://127.0.0.1:8765/mcp"
+    assert "wevex" in data["mcpServers"]
+    assert data["mcpServers"]["wevex"]["url"] == "http://127.0.0.1:8765/mcp"
 
 
 def test_sync_writes_vscode_mcp(tmp_path: Path, monkeypatch) -> None:
-    from skein.sync import sync_all
-    from skein import connections as conns
+    from wevex.sync import sync_all
+    from wevex import connections as conns
     monkeypatch.setattr(conns, "CONNECTIONS_PATH", tmp_path / "connections.json")
 
     sync_all(
@@ -196,12 +196,12 @@ def test_sync_writes_vscode_mcp(tmp_path: Path, monkeypatch) -> None:
     vscode = tmp_path / ".vscode" / "mcp.json"
     assert vscode.exists()
     data = json.loads(vscode.read_text())
-    assert "skein" in data["mcpServers"]
+    assert "wevex" in data["mcpServers"]
 
 
 def test_sync_writes_agents_md(tmp_path: Path, monkeypatch) -> None:
-    from skein.sync import sync_all
-    from skein import connections as conns
+    from wevex.sync import sync_all
+    from wevex import connections as conns
     monkeypatch.setattr(conns, "CONNECTIONS_PATH", tmp_path / "connections.json")
 
     agents_md = "# AGENTS.md\nTest content for agents."
@@ -219,8 +219,8 @@ def test_sync_writes_agents_md(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_sync_writes_claude_md_shim(tmp_path: Path, monkeypatch) -> None:
-    from skein.sync import sync_all
-    from skein import connections as conns
+    from wevex.sync import sync_all
+    from wevex import connections as conns
     monkeypatch.setattr(conns, "CONNECTIONS_PATH", tmp_path / "connections.json")
 
     sync_all(
@@ -236,8 +236,8 @@ def test_sync_writes_claude_md_shim(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_sync_does_not_overwrite_custom_claude_md(tmp_path: Path, monkeypatch) -> None:
-    from skein.sync import sync_all
-    from skein import connections as conns
+    from wevex.sync import sync_all
+    from wevex import connections as conns
     monkeypatch.setattr(conns, "CONNECTIONS_PATH", tmp_path / "connections.json")
 
     claude_md = tmp_path / "CLAUDE.md"
@@ -255,8 +255,8 @@ def test_sync_does_not_overwrite_custom_claude_md(tmp_path: Path, monkeypatch) -
 
 
 def test_sync_merges_existing_cursor_config(tmp_path: Path, monkeypatch) -> None:
-    from skein.sync import sync_all
-    from skein import connections as conns
+    from wevex.sync import sync_all
+    from wevex import connections as conns
     monkeypatch.setattr(conns, "CONNECTIONS_PATH", tmp_path / "connections.json")
 
     cursor_dir = tmp_path / ".cursor"
@@ -275,4 +275,4 @@ def test_sync_merges_existing_cursor_config(tmp_path: Path, monkeypatch) -> None
     data = json.loads((cursor_dir / "mcp.json").read_text())
     # Both entries should be present
     assert "other-tool" in data["mcpServers"]
-    assert "skein" in data["mcpServers"]
+    assert "wevex" in data["mcpServers"]

@@ -1,6 +1,6 @@
 """Guard against the gemini-embedding / gemini-CLI naming confusion.
 
-Two unrelated things in Skein used to share the prefix "gemini":
+Two unrelated things in Wevex used to share the prefix "gemini":
 
   1. The **Gemini embedding API** — removed in iter 27 because its rate
      limits wedged the daemon's event loop. The string "gemini" is now
@@ -9,7 +9,7 @@ Two unrelated things in Skein used to share the prefix "gemini":
 
   2. The **Gemini CLI** as an LLM client — a fully-supported sync target
      that's identified everywhere by ``"gemini_cli"`` (underscore), not
-     ``"gemini"``. Skein writes an MCP config snippet so the ``gemini``
+     ``"gemini"``. Wevex writes an MCP config snippet so the ``gemini``
      binary can connect to the local daemon, the same way it does for
      Claude Code, Cursor, Codex, Antigravity, etc.
 
@@ -26,7 +26,7 @@ def test_gemini_string_is_deprecated_alias_for_fastembed():
     """A user config still naming ``embedding_provider='gemini'`` must keep
     working — the daemon would otherwise crash on launchd respawn after a
     pip upgrade. ``get_provider('gemini')`` returns a FastembedProvider."""
-    from skein.embeddings import FastembedProvider, get_provider
+    from wevex.embeddings import FastembedProvider, get_provider
 
     provider = get_provider("gemini")
     assert isinstance(provider, FastembedProvider), (
@@ -37,11 +37,11 @@ def test_gemini_string_is_deprecated_alias_for_fastembed():
 
 
 def test_gemini_alias_normalised_at_config_load():
-    """SkeinConfig must normalise the deprecated alias in __init__ so all
+    """WevexConfig must normalise the deprecated alias in __init__ so all
     downstream callers (server.py, hooks.py, …) only ever see 'fastembed'."""
-    from skein.config import SkeinConfig
+    from wevex.config import WevexConfig
 
-    cfg = SkeinConfig({"embedding_provider": "gemini"})
+    cfg = WevexConfig({"embedding_provider": "gemini"})
     assert cfg.embedding_provider == "fastembed"
 
 
@@ -50,12 +50,12 @@ def test_gemini_alias_load_config_writes_back(tmp_path, monkeypatch):
     'fastembed' on read — keeps the file matching reality and prevents
     the daemon from log-spamming the deprecation warning forever."""
     import json
-    from skein.config import load_config
+    from wevex.config import load_config
 
-    # Conftest pins SKEIN_EMBEDDING_PROVIDER=hash for offline tests; the
+    # Conftest pins WEVEX_EMBEDDING_PROVIDER=hash for offline tests; the
     # production scenario being tested here is "no env override, legacy
     # disk value", so drop the override before calling.
-    monkeypatch.delenv("SKEIN_EMBEDDING_PROVIDER", raising=False)
+    monkeypatch.delenv("WEVEX_EMBEDDING_PROVIDER", raising=False)
 
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({
@@ -79,9 +79,9 @@ def test_no_separate_gemini_embedding_class():
     If you genuinely need cloud embeddings, extend OpenAIEmbeddingProvider
     or add a new differently-named class. Bringing back a Gemini-API-backed
     embedding provider regresses the iter 27 fix where its rate limits
-    wedged the daemon and produced 90-second `skein up` hangs.
+    wedged the daemon and produced 90-second `wevex up` hangs.
     """
-    import skein.embeddings as emb
+    import wevex.embeddings as emb
 
     forbidden = [
         name for name in dir(emb)
@@ -89,13 +89,13 @@ def test_no_separate_gemini_embedding_class():
     ]
     assert forbidden == [], (
         f"Found resurrected Gemini embedding class(es): {forbidden}. "
-        "See skein/embeddings.py module docstring for why this is banned."
+        "See wevex/embeddings.py module docstring for why this is banned."
     )
 
 
 def test_get_provider_rejects_unknown_names():
     """Sanity: factory rejects strings that aren't in the supported set."""
-    from skein.embeddings import get_provider
+    from wevex.embeddings import get_provider
 
     with pytest.raises(ValueError):
         get_provider("nope")
@@ -105,7 +105,7 @@ def test_fastembed_provider_dimension_and_identity():
     """FastembedProvider declares 384-dim BGE-small with is_real=True and
     name='fastembed'. Used by server.py / doctor for capability checks
     without instantiating the heavy ONNX runtime."""
-    from skein.embeddings import FastembedProvider
+    from wevex.embeddings import FastembedProvider
 
     assert FastembedProvider.dimension == 384
     assert FastembedProvider.is_real is True
@@ -118,10 +118,10 @@ def test_gemini_cli_client_id_uses_underscore():
     """The Gemini CLI LLM client identifier MUST stay 'gemini_cli'.
 
     Renaming it to plain 'gemini' would collide with the embedding-alias
-    namespace and the next person debugging "why is my Skein daemon
+    namespace and the next person debugging "why is my Wevex daemon
     embedding via the Gemini CLI" would lose an afternoon.
     """
-    from skein.clients import GeminiCLIClient
+    from wevex.clients import GeminiCLIClient
 
     assert GeminiCLIClient.id == "gemini_cli"
     assert "cli" in GeminiCLIClient.display_name.lower()

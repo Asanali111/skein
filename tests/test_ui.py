@@ -1,4 +1,4 @@
-"""Smoke tests for ``skein.ui`` helpers — render-without-crashing + pure
+"""Smoke tests for ``wevex.ui`` helpers — render-without-crashing + pure
 function correctness for ``home_relative`` / ``dot`` / ``mark``."""
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from skein import ui
+from wevex import ui
 
 
 # ---------------------------------------------------------------------------

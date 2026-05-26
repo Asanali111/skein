@@ -5,7 +5,7 @@ name: test
 # `pytest -q` go green on `windows-latest`. macOS and Linux must stay green
 # at every step — they are the regression guard.
 #
-# Tests force `SKEIN_EMBEDDING_PROVIDER=hash` via tests/conftest.py, so the
+# Tests force `WEVEX_EMBEDDING_PROVIDER=hash` via tests/conftest.py, so the
 # fastembed 130 MB model download does not happen in CI.
 
 on:
@@ -48,5 +48,5 @@ jobs:
           # Hash provider — no model download, fully offline. conftest.py
           # already sets this, but pinning at the workflow level documents
           # intent.
-          SKEIN_EMBEDDING_PROVIDER: hash
+          WEVEX_EMBEDDING_PROVIDER: hash
         run: pytest -q --tb=short

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from skein.server import _inbox_sweep_decision
+from wevex.server import _inbox_sweep_decision
 
 
 def _ts(days_ago: float) -> datetime:

@@ -42,7 +42,7 @@ class TestRecordRecallEvent:
 
 class TestLinkRecallToFragment:
     def test_link_unknown_recall_id_returns_false(self, seeded_storage):
-        from skein.models import FragmentCreate
+        from wevex.models import FragmentCreate
         s = seeded_storage
         frag = s.create_fragment(FragmentCreate(
             content="test fact", type="fact",
@@ -51,7 +51,7 @@ class TestLinkRecallToFragment:
         assert s.link_recall_to_fragment("nonexistent-id", frag.id) is False
 
     def test_link_known_recall_id_returns_true_and_persists(self, seeded_storage):
-        from skein.models import FragmentCreate
+        from wevex.models import FragmentCreate
         s = seeded_storage
         s.record_recall_event("known1", "q", "project:test")
         frag = s.create_fragment(FragmentCreate(
@@ -81,7 +81,7 @@ class TestRecallWriteStats:
         assert linked == 0
 
     def test_linked_recalls_count_in_both(self, seeded_storage):
-        from skein.models import FragmentCreate
+        from wevex.models import FragmentCreate
         s = seeded_storage
         s.record_recall_event("rA", "qA", "project:test")
         s.record_recall_event("rB", "qB", "project:test")
@@ -96,12 +96,12 @@ class TestRecallWriteStats:
 
 
 class TestMCPRecallFooter:
-    """The MCP recall response MUST include a `[skein:recall_id=...]`
+    """The MCP recall response MUST include a `[wevex:recall_id=...]`
     footer line so the LLM can pass the id back via from_recall."""
 
     def test_recall_response_includes_recall_id_footer(self, authed_client, app):
-        from skein.dependencies import get_storage
-        from skein.models import FragmentCreate, IdentityCreate, ScopeCreate
+        from wevex.dependencies import get_storage
+        from wevex.models import FragmentCreate, IdentityCreate, ScopeCreate
         storage = get_storage()
         owner = storage.get_or_create_identity(IdentityCreate(
             handle="user:i35", type="user", name="iter35",
@@ -128,13 +128,13 @@ class TestMCPRecallFooter:
         })
         assert resp.status_code == 200, resp.text
         text = resp.json()["result"]["content"][0]["text"]
-        assert "[skein:recall_id=" in text, (
+        assert "[wevex:recall_id=" in text, (
             f"recall response must include recall_id footer. Got: {text!r}"
         )
 
     def test_recall_response_footer_present_when_empty(self, authed_client, app):
-        from skein.dependencies import get_storage
-        from skein.models import IdentityCreate, ScopeCreate
+        from wevex.dependencies import get_storage
+        from wevex.models import IdentityCreate, ScopeCreate
         storage = get_storage()
         owner = storage.get_or_create_identity(IdentityCreate(
             handle="user:i35e", type="user", name="iter35-empty",
@@ -156,15 +156,15 @@ class TestMCPRecallFooter:
         })
         assert resp.status_code == 200
         text = resp.json()["result"]["content"][0]["text"]
-        assert "[skein:recall_id=" in text
+        assert "[wevex:recall_id=" in text
 
 
 class TestMCPRememberFromRecall:
     """Calling remember(from_recall=<id>) creates a row in recall_links."""
 
     def test_remember_with_from_recall_creates_link(self, authed_client, app):
-        from skein.dependencies import get_storage
-        from skein.models import IdentityCreate, ScopeCreate
+        from wevex.dependencies import get_storage
+        from wevex.models import IdentityCreate, ScopeCreate
         storage = get_storage()
         owner = storage.get_or_create_identity(IdentityCreate(
             handle="user:i35r", type="user", name="iter35-remember",
@@ -186,7 +186,7 @@ class TestMCPRememberFromRecall:
         text = resp.json()["result"]["content"][0]["text"]
         # Parse the recall_id out of the footer
         import re
-        m = re.search(r"\[skein:recall_id=([0-9a-f]+)\]", text)
+        m = re.search(r"\[wevex:recall_id=([0-9a-f]+)\]", text)
         assert m, f"could not extract recall_id from response: {text!r}"
         recall_id = m.group(1)
 
@@ -217,8 +217,8 @@ class TestMCPRememberFromRecall:
         assert row is not None
 
     def test_remember_with_bogus_from_recall_does_not_error(self, authed_client, app):
-        from skein.dependencies import get_storage
-        from skein.models import IdentityCreate, ScopeCreate
+        from wevex.dependencies import get_storage
+        from wevex.models import IdentityCreate, ScopeCreate
         storage = get_storage()
         owner = storage.get_or_create_identity(IdentityCreate(
             handle="user:i35b", type="user", name="iter35-bogus",

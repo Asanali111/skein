@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from skein.transcript_watcher import (
+from wevex.transcript_watcher import (
     ClaudeCodeTranscriptWatcher,
     decode_claude_project_dir,
     extract_from_text,
@@ -22,7 +22,7 @@ from skein.transcript_watcher import (
 # blows up on Windows where absolute paths contain a drive-letter colon
 # (`C:\Users\me\proj` would encode to `-C:-Users-me-proj` — a colon is an
 # illegal filename character on Windows, so the directory cannot be
-# created). The transcript watcher is opt-in (SKEIN_TRANSCRIPT_WATCHER=1
+# created). The transcript watcher is opt-in (WEVEX_TRANSCRIPT_WATCHER=1
 # per HANDOFF.md); a Windows-aware encoding is documented as a follow-up.
 # Path-round-trip + directory-creation tests below need a real watcher
 # directory on disk, so they're skipped on Windows. The parsing /
@@ -93,7 +93,7 @@ def test_decode_claude_project_dir_round_trip(tmp_path: Path) -> None:
     # (e.g. ``pytest-31``), so we build a hyphen-free path under ``/tmp``
     # for the round-trip assertion.
     import os
-    safe_root = Path("/tmp") / f"skein_test_{os.getpid()}"
+    safe_root = Path("/tmp") / f"wevex_test_{os.getpid()}"
     safe_dir = safe_root / "proj"
     safe_dir.mkdir(parents=True, exist_ok=True)
     try:
@@ -178,9 +178,9 @@ def test_transcripts_for_project_finds_jsonl(tmp_path: Path) -> None:
 def test_watcher_poll_once_extracts_and_advances_cursor(tmp_path: Path) -> None:
     """End-to-end: write a transcript, poll, verify candidates landed and
     the cursor moved to EOF."""
-    from skein.storage import Storage
-    from skein.models import IdentityCreate, ScopeCreate
-    from skein.embeddings import HashEmbeddingProvider
+    from wevex.storage import Storage
+    from wevex.models import IdentityCreate, ScopeCreate
+    from wevex.embeddings import HashEmbeddingProvider
 
     db_path = tmp_path / "test.db"
     storage = Storage(str(db_path))

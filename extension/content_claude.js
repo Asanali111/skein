@@ -1,7 +1,7 @@
-// Skein content script — claude.ai
+// Wevex content script — claude.ai
 //
 // Site-specific selectors only. All cross-site logic lives in
-// content_common.js, which exposes __SkeinCommon.init(siteAdapter).
+// content_common.js, which exposes __WevexCommon.init(siteAdapter).
 //
 // claude.ai uses a ProseMirror contenteditable, not a real <textarea>.
 // The class names ("ProseMirror", role="textbox") are reasonably stable
@@ -24,7 +24,7 @@
     );
   }
 
-  // Iter 35: find rendered assistant turns for the Save-to-Skein button.
+  // Iter 35: find rendered assistant turns for the Save-to-Wevex button.
   // Claude wraps each assistant message body in a div carrying the
   // `font-claude-message` class. We anchor on the closest stable parent
   // that doesn't churn between streaming and final state.
@@ -35,12 +35,12 @@
     return Array.from(nodes);
   }
 
-  if (!globalThis.__SkeinCommon) {
-    console.warn("[skein] content_common.js not loaded; aborting claude.ai script");
+  if (!globalThis.__WevexCommon) {
+    console.warn("[wevex] content_common.js not loaded; aborting claude.ai script");
     return;
   }
 
-  globalThis.__SkeinCommon.init({
+  globalThis.__WevexCommon.init({
     siteName: "claude.ai",
     findPromptElement,
     findSendButton,

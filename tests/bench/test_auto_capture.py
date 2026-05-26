@@ -1,6 +1,6 @@
 """Pytest gate for auto-capture (decision detection) quality.
 
-Skein's current noise filter has known false positives (``test:`` type
+Wevex's current noise filter has known false positives (``test:`` type
 commits and "Initial commit" — see ``commits.json``). We allow precision
 down to 0.75 and recall ≥ 0.9. Tighten as the filter improves.
 """

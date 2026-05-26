@@ -1,4 +1,4 @@
-"""Tests for the active-projects registry (~/.config/skein/projects.json)."""
+"""Tests for the active-projects registry (~/.config/wevex/projects.json)."""
 from __future__ import annotations
 
 import json
@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from skein import projects as projects_mod
-from skein.projects import (
+from wevex import projects as projects_mod
+from wevex.projects import (
     ProjectEntry, get_project, list_projects, remove_project,
     touch_last_ingest, upsert_project,
 )
@@ -16,7 +16,7 @@ from skein.projects import (
 @pytest.fixture
 def isolated_registry(tmp_path, monkeypatch):
     """Redirect REGISTRY_PATH so tests don't touch the user's real file."""
-    fake = tmp_path / "config" / "skein" / "projects.json"
+    fake = tmp_path / "config" / "wevex" / "projects.json"
     monkeypatch.setattr(projects_mod, "REGISTRY_PATH", fake)
     return fake
 

@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from skein.docs_watcher import scan_docs
-from skein.embeddings import HashEmbeddingProvider
-from skein.models import IdentityCreate, ScopeCreate
-from skein.passive import promote_scanned_facts
-from skein.storage import Storage
+from wevex.docs_watcher import scan_docs
+from wevex.embeddings import HashEmbeddingProvider
+from wevex.models import IdentityCreate, ScopeCreate
+from wevex.passive import promote_scanned_facts
+from wevex.storage import Storage
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +205,7 @@ def test_docs_promote_supersedes_on_second_run(
 
     repo = tmp_path / "repo"
     repo.mkdir()
-    (repo / "README.md").write_text("# Skein\n\nOriginal tagline.\n")
+    (repo / "README.md").write_text("# Wevex\n\nOriginal tagline.\n")
 
     res1 = promote_scanned_facts(
         scan_docs(repo),
@@ -216,7 +216,7 @@ def test_docs_promote_supersedes_on_second_run(
     assert res1.auto_promoted == 1
 
     # Mutate the README content; topic_key must remain stable.
-    (repo / "README.md").write_text("# Skein\n\nUpdated tagline with new content.\n")
+    (repo / "README.md").write_text("# Wevex\n\nUpdated tagline with new content.\n")
 
     res2 = promote_scanned_facts(
         scan_docs(repo),

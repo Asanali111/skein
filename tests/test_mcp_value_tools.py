@@ -1,7 +1,7 @@
 """ADR-002 / iter 26 — boost / bury / archaeology MCP tools.
 
 These three tools are the *agent-facing* surface for the Q-05 value system.
-The user never types `skein boost` — they say "remember this is important"
+The user never types `wevex boost` — they say "remember this is important"
 in their chat, and the agent invokes ``boost`` on the relevant fragment.
 
 These tests pin three things:

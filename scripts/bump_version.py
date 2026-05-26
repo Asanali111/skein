@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bump the Skein version in pyproject.toml and skein/__init__.py.
+"""Bump the Wevex version in pyproject.toml and wevex/__init__.py.
 
 Usage:
     python scripts/bump_version.py           # bump patch (default)
@@ -66,14 +66,14 @@ def main() -> None:
         r'^version\s*=\s*"[^"]+"',
     )
     _replace_version(
-        ROOT / "skein" / "__init__.py", old, new,
+        ROOT / "wevex" / "__init__.py", old, new,
         r'__version__\s*=\s*"[^"]+"',
     )
 
     print(f"Bumped {old} → {new}")
     print()
     print("Next steps:")
-    print(f"  git add pyproject.toml skein/__init__.py")
+    print(f"  git add pyproject.toml wevex/__init__.py")
     print(f"  git commit -m 'chore: bump version to {new}'")
     print(f"  git push origin main")
     print()

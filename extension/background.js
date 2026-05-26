@@ -1,4 +1,4 @@
-// Skein browser extension — service worker
+// Wevex browser extension — service worker
 //
 // Role: the only context in the extension that can fetch from 127.0.0.1.
 // Content scripts run under the page's origin (https://claude.ai) and can't
@@ -7,7 +7,7 @@
 // results back to whichever content script asked.
 //
 // State (in chrome.storage.local):
-//   daemonUrl    — base URL of the Skein daemon (default 8766 for the
+//   daemonUrl    — base URL of the Wevex daemon (default 8766 for the
 //                  experiment branch; production extension will default to
 //                  8765)
 //   bearerToken  — string returned by /v1/pair-browser; null until paired
@@ -45,14 +45,14 @@ async function setState(patch) {
 // reloads or the user uninstalls + reinstalls just works.
 async function pair() {
   const { daemonUrl } = await getState();
-  console.info("[skein] pairing with", daemonUrl);
+  console.info("[wevex] pairing with", daemonUrl);
   const r = await fetch(`${daemonUrl}/v1/pair-browser`, {
     method: "POST",
     // The browser auto-fills Origin to `chrome-extension://<our id>` for
     // any extension-initiated fetch; the daemon checks that header.
   });
   if (!r.ok) {
-    console.error("[skein] pairing failed", r.status, await r.text());
+    console.error("[wevex] pairing failed", r.status, await r.text());
     throw new Error(`pair-browser returned ${r.status}`);
   }
   const data = await r.json();
@@ -60,7 +60,7 @@ async function pair() {
     bearerToken: data.bearer_token,
     daemonUrl: data.daemon_url,
   });
-  console.info("[skein] paired ✓ daemon=", data.daemon_url);
+  console.info("[wevex] paired ✓ daemon=", data.daemon_url);
   return data;
 }
 
@@ -184,7 +184,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
 
         case "note": {
-          // Iter 35: "Save to Skein" button on assistant turns. Pass the
+          // Iter 35: "Save to Wevex" button on assistant turns. Pass the
           // turn text straight to MCP note() — daemon classifies type +
           // tags + value automatically. msg.content (string, required);
           // msg.fromRecall (string, optional) for outcome linking.
@@ -212,7 +212,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           sendResponse({ ok: false, error: `unknown message type: ${msg.type}` });
       }
     } catch (err) {
-      console.error("[skein] message handler error", msg.type, err);
+      console.error("[wevex] message handler error", msg.type, err);
       sendResponse({ ok: false, error: String(err && err.message || err) });
     }
   })();
@@ -223,10 +223,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // ---- pair on install ---------------------------------------------------
 
 chrome.runtime.onInstalled.addListener(async () => {
-  console.info("[skein] extension installed; attempting pair");
+  console.info("[wevex] extension installed; attempting pair");
   try {
     await pair();
   } catch (err) {
-    console.warn("[skein] initial pair failed; will retry on first use:", err.message);
+    console.warn("[wevex] initial pair failed; will retry on first use:", err.message);
   }
 });

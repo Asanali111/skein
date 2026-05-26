@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from skein import hooks as hooks_mod
-from skein.agents_md import _extract_user_block, render_agents_md
-from skein.scope_resolver import _is_non_project_dir, auto_detect_scope
+from wevex import hooks as hooks_mod
+from wevex.agents_md import _extract_user_block, render_agents_md
+from wevex.scope_resolver import _is_non_project_dir, auto_detect_scope
 
 
 # Iter 27: the POSIX `Path("/")` and `Path("/tmp")` cases don't translate
@@ -107,8 +107,8 @@ class TestUserBlockExtractor:
 
     def test_idempotent_round_trip(self, tmp_path):
         """Run sync 5× in a row; AGENTS.md should stay constant size."""
-        from skein.storage import Storage
-        from skein.models import IdentityCreate, ScopeCreate
+        from wevex.storage import Storage
+        from wevex.models import IdentityCreate, ScopeCreate
 
         s = Storage(str(tmp_path / "test.db"))
         owner = s.create_identity(IdentityCreate(
@@ -129,8 +129,8 @@ class TestUserBlockExtractor:
             prev_text = text
 
         s.close()
-        # After 5 round-trips, exactly one Skein-context-bus header
-        assert prev_text.count("## Skein context bus") == 1
+        # After 5 round-trips, exactly one Wevex-context-bus header
+        assert prev_text.count("## Wevex context bus") == 1
         # The header documentation line legitimately contains `<!-- @user -->`
         # in backticks; we want exactly one un-backticked marker pair (the
         # real block).
@@ -164,7 +164,7 @@ class TestHookConstants:
 
 class TestRenderGrouped:
     def test_groups_by_type(self):
-        from skein.models import Fragment
+        from wevex.models import Fragment
 
         frags = [
             Fragment(
@@ -194,7 +194,7 @@ class TestRenderGrouped:
         assert req_idx < dec_idx
 
     def test_renders_no_observations_section_when_absent(self):
-        from skein.models import Fragment
+        from wevex.models import Fragment
         frags = [
             Fragment(
                 id="1", type="decision", content="A decision", scope_id="s",
@@ -218,8 +218,8 @@ class TestRenderGrouped:
 
 class TestCountFragmentsInScope:
     def test_returns_zero_for_new_scope(self, tmp_path):
-        from skein.storage import Storage
-        from skein.models import IdentityCreate, ScopeCreate
+        from wevex.storage import Storage
+        from wevex.models import IdentityCreate, ScopeCreate
 
         s = Storage(str(tmp_path / "test.db"))
         owner = s.create_identity(IdentityCreate(
@@ -246,8 +246,8 @@ class TestIngestFastPath:
         return repo
 
     def _build_storage_with_scope(self, tmp_path: Path):
-        from skein.storage import Storage
-        from skein.models import IdentityCreate, ScopeCreate
+        from wevex.storage import Storage
+        from wevex.models import IdentityCreate, ScopeCreate
         s = Storage(str(tmp_path / "ingest.db"))
         owner = s.create_identity(IdentityCreate(
             handle="user:i", type="user", name="i",
@@ -262,8 +262,8 @@ class TestIngestFastPath:
         """If every chunk in a batch is unchanged, the provider's embed()
         must NOT be called. This is the 20–50× win on re-ingest with
         Gemini."""
-        from skein.ingest import ingest_directory
-        from skein.embeddings import HashEmbeddingProvider
+        from wevex.ingest import ingest_directory
+        from wevex.embeddings import HashEmbeddingProvider
 
         repo = self._build_repo(tmp_path)
         storage, scope = self._build_storage_with_scope(tmp_path)
@@ -297,8 +297,8 @@ class TestIngestFastPath:
 
     def test_changed_chunk_triggers_embed_only_for_that_chunk(self, tmp_path):
         """One file changed → only its chunks should reach embed()."""
-        from skein.ingest import ingest_directory
-        from skein.embeddings import HashEmbeddingProvider
+        from wevex.ingest import ingest_directory
+        from wevex.embeddings import HashEmbeddingProvider
 
         repo = self._build_repo(tmp_path, n_files=5)
         storage, scope = self._build_storage_with_scope(tmp_path)
@@ -332,14 +332,14 @@ class TestIngestFastPath:
 
 class TestDaemonBootFastPath:
     """Iteration 12: daemon status uses cached backend + stdlib urllib so
-    `skein up` doesn't pay the 800 ms launchctl + 1100 ms httpx cold-start
+    `wevex up` doesn't pay the 800 ms launchctl + 1100 ms httpx cold-start
     cost on every run."""
 
     def test_check_health_uses_stdlib_not_httpx(self):
-        """If we ever re-introduce httpx in _check_health, every `skein up`
+        """If we ever re-introduce httpx in _check_health, every `wevex up`
         gains ~1.1 s back. Pin it."""
         from pathlib import Path
-        src = Path(__file__).resolve().parent.parent / "skein" / "daemon.py"
+        src = Path(__file__).resolve().parent.parent / "wevex" / "daemon.py"
         text = src.read_text()
         # Find the _check_health body and assert urllib usage
         marker = "def _check_health"
@@ -355,7 +355,7 @@ class TestDaemonBootFastPath:
         )
 
     def test_cached_backend_read_write_roundtrip(self, tmp_path, monkeypatch):
-        from skein import daemon as d_mod
+        from wevex import daemon as d_mod
         monkeypatch.setattr(
             d_mod, "_BACKEND_CACHE_FILE", tmp_path / "backend",
         )
@@ -370,7 +370,7 @@ class TestDaemonBootFastPath:
     def test_cached_backend_invalidated_when_unit_missing(self, tmp_path, monkeypatch):
         """If the user uninstalls launchd unit out-of-band, cache should
         refuse to report it as backend."""
-        from skein import daemon as d_mod
+        from wevex import daemon as d_mod
         monkeypatch.setattr(
             d_mod, "_BACKEND_CACHE_FILE", tmp_path / "backend",
         )
@@ -385,7 +385,7 @@ class TestPragmaTuning:
     drive the speed budget for the daemon and watcher."""
 
     def test_journal_mode_wal(self, tmp_path):
-        from skein.storage import Storage
+        from wevex.storage import Storage
         s = Storage(str(tmp_path / "test.db"))
         try:
             mode = s._conn.execute("PRAGMA journal_mode").fetchone()[0]
@@ -394,7 +394,7 @@ class TestPragmaTuning:
             s.close()
 
     def test_synchronous_normal(self, tmp_path):
-        from skein.storage import Storage
+        from wevex.storage import Storage
         s = Storage(str(tmp_path / "test.db"))
         try:
             sync = s._conn.execute("PRAGMA synchronous").fetchone()[0]
@@ -403,7 +403,7 @@ class TestPragmaTuning:
             s.close()
 
     def test_busy_timeout_set(self, tmp_path):
-        from skein.storage import Storage
+        from wevex.storage import Storage
         s = Storage(str(tmp_path / "test.db"))
         try:
             t = s._conn.execute("PRAGMA busy_timeout").fetchone()[0]

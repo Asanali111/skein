@@ -1,22 +1,22 @@
-# Skein browser extension
+# Wevex browser extension
 
-Inject local Skein context into prompts on **claude.ai**, **chatgpt.com**,
-and **gemini.google.com** — and save assistant turns back to Skein
+Inject local Wevex context into prompts on **claude.ai**, **chatgpt.com**,
+and **gemini.google.com** — and save assistant turns back to Wevex
 with one click.
 
-The extension is a thin client of your existing `skein up` daemon. It
+The extension is a thin client of your existing `wevex up` daemon. It
 runs entirely against `127.0.0.1`. Prompts never leave the machine.
 
 ## What it does
 
 1. **Context injection on send.** When you hit Enter, the extension
-   asks Skein for context relevant to your prompt and prepends a
-   `[Skein context — auto-injected ...]` block before submitting.
-   If Skein has no high-signal match (daemon says `relevance=low|none`),
+   asks Wevex for context relevant to your prompt and prepends a
+   `[Wevex context — auto-injected ...]` block before submitting.
+   If Wevex has no high-signal match (daemon says `relevance=low|none`),
    the extension skips injection so it doesn't waste tokens.
 
-2. **Save to Skein (iter 35).** Every assistant turn renders a small
-   "Save to Skein" button in the top-right corner. Click to save the
+2. **Save to Wevex (iter 35).** Every assistant turn renders a small
+   "Save to Wevex" button in the top-right corner. Click to save the
    turn as a note — the daemon classifies type / tags / value
    automatically. Useful for capturing one-off insights mid-conversation
    that would otherwise evaporate when the session ends.
@@ -30,8 +30,8 @@ runs entirely against `127.0.0.1`. Prompts never leave the machine.
 ### 1. Make sure your daemon is at v0.2.0 or newer
 
 ```bash
-skein --version          # should print 0.2.0 (or higher)
-skein update             # if not, bump and restart
+wevex --version          # should print 0.2.0 (or higher)
+wevex update             # if not, bump and restart
 ```
 
 The extension's pairing endpoint (`/v1/pair-browser`) lands in v0.2.0.
@@ -45,16 +45,16 @@ Works in Chrome, Brave, Arc, Edge — anything Chromium-based.
 2. Toggle **Developer mode** on (top-right corner).
 3. Click **Load unpacked**.
 4. Pick this directory: `~/Documents/company-brain/extension/`.
-5. Chrome should list "Skein for browser LLMs · 0.2.0" with a small icon.
+5. Chrome should list "Wevex for browser LLMs · 0.2.0" with a small icon.
 
 Firefox support is on the roadmap (MV3 differences are small); Safari
 is deferred (Xcode + Apple Developer Program required).
 
 ### 3. Pair and pick a scope
 
-1. Click the Skein icon in the toolbar — opens the popup.
+1. Click the Wevex icon in the toolbar — opens the popup.
 2. **Status** should turn green: `✓ paired · N scope(s) available`.
-   If red, your daemon isn't running — `skein up` first.
+   If red, your daemon isn't running — `wevex up` first.
 3. **Scope** dropdown — pick your project (e.g. `project:myapp`).
 4. **Inject context on send** is on by default. Leave it.
 5. **Query** field + **Test recall** — confirm end-to-end works.
@@ -68,33 +68,33 @@ Open any supported site:
 
 Type a real question. Hit Enter. You should see:
 
-- A small blue toast: `Skein → recalling context…`
-- A `[Skein context — auto-injected ...]` block prepended to your prompt.
+- A small blue toast: `Wevex → recalling context…`
+- A `[Wevex context — auto-injected ...]` block prepended to your prompt.
 - The message submits with context attached.
 - The assistant references project facts it couldn't have known otherwise.
 
 After the assistant finishes streaming, hover any turn to reveal the
-**Save to Skein** button in its top-right. Click to capture.
+**Save to Wevex** button in its top-right. Click to capture.
 
 ## Verifying it's working
 
 Three independent signals:
 
-**Console (`Cmd-Opt-I` → Console, filter `[skein]`):**
+**Console (`Cmd-Opt-I` → Console, filter `[wevex]`):**
 ```
-[skein] content script loaded for claude.ai
-[skein] paired ✓ daemon= http://127.0.0.1:8765
-[skein] intercept (keydown:Enter) for query: how does auth work…
-[skein] injecting 412 chars of context, relevance=high
+[wevex] content script loaded for claude.ai
+[wevex] paired ✓ daemon= http://127.0.0.1:8765
+[wevex] intercept (keydown:Enter) for query: how does auth work…
+[wevex] injecting 412 chars of context, relevance=high
 ```
 
 **Daemon log:**
 ```bash
-skein tail   # or tail -f ~/.config/skein/logs/daemon.log
+wevex tail   # or tail -f ~/.config/wevex/logs/daemon.log
 ```
 You'll see `POST /v1/pair-browser` once, then `POST /mcp` per submit.
 
-**Assistant quality.** Ask something only Skein could know — e.g.
+**Assistant quality.** Ask something only Wevex could know — e.g.
 *"what did we decide about the auth flow?"*. Without the extension,
 the LLM has no context. With it on, the answer is specific.
 
@@ -103,7 +103,7 @@ the LLM has no context. With it on, the answer is specific.
 - **Per-message:** hold Shift+Enter — the interceptor only fires on
   bare Enter. (Plus the popup toggle.)
 - **Per-session:** toolbar icon → uncheck **Inject context on send**.
-- **Entirely:** `chrome://extensions` → toggle Skein off, or **Remove**.
+- **Entirely:** `chrome://extensions` → toggle Wevex off, or **Remove**.
 
 ## What's safe
 
@@ -122,7 +122,7 @@ the LLM has no context. With it on, the answer is specific.
 - **DOM selector drift.** ChatGPT and Gemini ship UI changes
   frequently — selectors are written defensively (multiple fallbacks
   per site) but a hard breaking change will need a selector update.
-  Check the console for `[skein] prompt element gone` if injection
+  Check the console for `[wevex] prompt element gone` if injection
   silently stops.
 - **No streaming-aware feedback.** The "injected" toast disappears
   after 1.5 s; for long responses the console logs are the audit trail.

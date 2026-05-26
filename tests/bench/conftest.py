@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import pytest
 
-from bench.adapters.skein_ephemeral import SkeinEphemeralAdapter
+from bench.adapters.wevex_ephemeral import WevexEphemeralAdapter
 
 
 @pytest.fixture
 def ephemeral_adapter():
-    """Fresh in-process Skein on a tmp DB. Closed at teardown."""
-    a = SkeinEphemeralAdapter()
+    """Fresh in-process Wevex on a tmp DB. Closed at teardown."""
+    a = WevexEphemeralAdapter()
     try:
         a.ensure_scope("project:bench")
         yield a

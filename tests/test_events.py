@@ -7,14 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from skein.events import EventLogger, MAX_BYTES, default_path, log_event, reset_event_logger
+from wevex.events import EventLogger, MAX_BYTES, default_path, log_event, reset_event_logger
 
 
 @pytest.fixture
 def tmp_events(tmp_path, monkeypatch):
     """Point the events singleton at a fresh file under tmp_path."""
     p = tmp_path / "events.jsonl"
-    monkeypatch.setenv("SKEIN_EVENTS_PATH", str(p))
+    monkeypatch.setenv("WEVEX_EVENTS_PATH", str(p))
     reset_event_logger()
     yield p
     reset_event_logger()
@@ -38,7 +38,7 @@ def test_log_never_raises_on_bad_path(tmp_path, monkeypatch) -> None:
     # Point at a path under a regular file (so mkdir will fail)
     blocker = tmp_path / "blocker"
     blocker.write_text("not a directory")
-    monkeypatch.setenv("SKEIN_EVENTS_PATH", str(blocker / "events.jsonl"))
+    monkeypatch.setenv("WEVEX_EVENTS_PATH", str(blocker / "events.jsonl"))
     reset_event_logger()
     # Should not raise even though parent isn't a real dir
     log_event("recall", scope="project:x", query="anything")
@@ -58,7 +58,7 @@ def test_log_appends_multiple(tmp_events: Path) -> None:
 def test_log_rotation(tmp_path, monkeypatch) -> None:
     """When the file exceeds MAX_BYTES, it rotates to .1."""
     p = tmp_path / "events.jsonl"
-    monkeypatch.setenv("SKEIN_EVENTS_PATH", str(p))
+    monkeypatch.setenv("WEVEX_EVENTS_PATH", str(p))
     reset_event_logger()
 
     # Seed the file just past the rotation threshold
@@ -79,20 +79,20 @@ def test_log_rotation(tmp_path, monkeypatch) -> None:
 
 def test_default_path_honors_env(tmp_path, monkeypatch) -> None:
     custom = tmp_path / "custom" / "events.jsonl"
-    monkeypatch.setenv("SKEIN_EVENTS_PATH", str(custom))
+    monkeypatch.setenv("WEVEX_EVENTS_PATH", str(custom))
     assert default_path() == custom
 
 
 def test_default_path_fallback(monkeypatch) -> None:
     # Iter 27 Windows port: the per-user state dir lives at
-    # %APPDATA%\skein\ on Windows and ~/.config/skein/ on macOS/Linux.
-    # Assert against `paths.skein_home()` so the test follows whichever
+    # %APPDATA%\wevex\ on Windows and ~/.config/wevex/ on macOS/Linux.
+    # Assert against `paths.wevex_home()` so the test follows whichever
     # platform it runs on.
-    from skein import paths as skein_paths
-    monkeypatch.delenv("SKEIN_EVENTS_PATH", raising=False)
+    from wevex import paths as wevex_paths
+    monkeypatch.delenv("WEVEX_EVENTS_PATH", raising=False)
     p = default_path()
     assert p.name == "events.jsonl"
-    assert p.parent == skein_paths.skein_home()
+    assert p.parent == wevex_paths.wevex_home()
 
 
 def test_logger_omits_scope_when_none(tmp_events: Path) -> None:

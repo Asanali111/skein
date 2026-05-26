@@ -14,8 +14,8 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from skein.models import FragmentCreate
-from skein.storage import Storage
+from wevex.models import FragmentCreate
+from wevex.storage import Storage
 
 
 # ---------------------------------------------------------------------------
@@ -78,7 +78,7 @@ def test_count_fragments_by_type_excludes_stale_by_default(seeded_storage: Stora
 
 def test_project_briefing_shape(seeded_storage: Storage) -> None:
     """All top-level keys present with the right types."""
-    from skein.mcp import build_briefing
+    from wevex.mcp import build_briefing
     st = seeded_storage
     scope_id = st._test_scope.id
     user_id = st._test_user.id
@@ -88,7 +88,7 @@ def test_project_briefing_shape(seeded_storage: Storage) -> None:
         scope_id=scope_id, owner_id=user_id,
     ))
     st.create_fragment(FragmentCreate(
-        type="fact", content="DB is at ~/.config/skein/skein.db",
+        type="fact", content="DB is at ~/.config/wevex/wevex.db",
         scope_id=scope_id, owner_id=user_id,
     ))
 
@@ -121,7 +121,7 @@ def test_project_briefing_shape(seeded_storage: Storage) -> None:
 def test_briefing_unknown_scope_returns_zeros(seeded_storage: Storage) -> None:
     """Calling briefing on a scope that doesn't exist yet returns zeros, not
     an error — the MCP tool should be safe to invoke from any cwd."""
-    from skein.mcp import build_briefing
+    from wevex.mcp import build_briefing
     out = build_briefing(seeded_storage, "project:does-not-exist")
     assert out["fragment_total"] == 0
     assert out["fragment_counts"]["decision"] == 0
@@ -135,7 +135,7 @@ def test_briefing_unknown_scope_returns_zeros(seeded_storage: Storage) -> None:
 
 def test_briefing_recent_decisions_capped_at_5(seeded_storage: Storage) -> None:
     """Seeding 10 decisions → recent_decisions has exactly 5 entries."""
-    from skein.mcp import build_briefing
+    from wevex.mcp import build_briefing
     st = seeded_storage
     scope_id = st._test_scope.id
     user_id = st._test_user.id
@@ -162,14 +162,14 @@ def test_briefing_recent_decisions_capped_at_5(seeded_storage: Storage) -> None:
 
 def test_briefing_next_recommended_action_empty(seeded_storage: Storage) -> None:
     """Empty project → 'bootstrapping memory' message (< 10 decisions branch)."""
-    from skein.mcp import build_briefing
+    from wevex.mcp import build_briefing
     out = build_briefing(seeded_storage, "project:test")
     assert "bootstrapping memory" in out["next_recommended_action"]
 
 
 def test_briefing_next_recommended_action_healthy(seeded_storage: Storage) -> None:
     """≥ 10 decisions and zero pending inbox → healthy message."""
-    from skein.mcp import build_briefing
+    from wevex.mcp import build_briefing
     st = seeded_storage
     scope_id = st._test_scope.id
     user_id = st._test_user.id
@@ -188,7 +188,7 @@ def test_briefing_next_recommended_action_inbox_pending(
     seeded_storage: Storage,
 ) -> None:
     """Pending inbox candidates take priority over the other heuristics."""
-    from skein.mcp import build_briefing
+    from wevex.mcp import build_briefing
     st = seeded_storage
     scope_id = st._test_scope.id
 
@@ -208,7 +208,7 @@ def test_briefing_next_recommended_action_inbox_pending(
     out = build_briefing(st, "project:test")
     msg = out["next_recommended_action"]
     assert "Review 1 pending fragments" in msg
-    assert "skein inbox" in msg
+    assert "wevex inbox" in msg
 
 
 # ---------------------------------------------------------------------------

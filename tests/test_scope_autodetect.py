@@ -1,4 +1,4 @@
-"""Tests for auto_detect_scope() — the heuristic used by `skein up`."""
+"""Tests for auto_detect_scope() — the heuristic used by `wevex up`."""
 from __future__ import annotations
 
 import subprocess
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from skein.scope_resolver import auto_detect_scope, _clean_handle_part
+from wevex.scope_resolver import auto_detect_scope, _clean_handle_part
 
 
 class TestCleanHandlePart:
@@ -26,9 +26,9 @@ class TestCleanHandlePart:
 
 class TestAutoDetect:
     def test_pin_wins(self, tmp_path, monkeypatch):
-        skein_dir = tmp_path / ".skein"
-        skein_dir.mkdir()
-        (skein_dir / "scope").write_text("project:from-pin")
+        wevex_dir = tmp_path / ".wevex"
+        wevex_dir.mkdir()
+        (wevex_dir / "scope").write_text("project:from-pin")
         monkeypatch.chdir(tmp_path)
         assert auto_detect_scope() == "project:from-pin"
 

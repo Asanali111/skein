@@ -16,12 +16,12 @@ import pytest
 # failures).
 fastembed = pytest.importorskip("fastembed")
 
-from skein.embeddings import (
+from wevex.embeddings import (
     EmbeddingProvider,
     FastembedProvider,
     get_provider,
 )
-from skein.storage import Storage
+from wevex.storage import Storage
 
 
 # ---------------------------------------------------------------------------
@@ -54,7 +54,7 @@ def test_fastembed_default_model_name() -> None:
 
 def test_fastembed_embed_one_returns_384_floats() -> None:
     p = FastembedProvider()
-    vec = p.embed_one("skein context bus")
+    vec = p.embed_one("wevex context bus")
     assert isinstance(vec, list)
     assert len(vec) == 384
     assert all(isinstance(x, float) for x in vec[:5])
@@ -109,7 +109,7 @@ def test_fastembed_missing_import_raises_with_install_hint(monkeypatch) -> None:
 
 def test_peek_embedding_dimension_empty_db(tmp_path) -> None:
     """Fresh DB with no embeddings yet -> None."""
-    st = Storage(str(tmp_path / "skein.db"))
+    st = Storage(str(tmp_path / "wevex.db"))
     try:
         assert st.peek_embedding_dimension() is None
     finally:
@@ -121,9 +121,9 @@ def test_peek_embedding_dimension_returns_stored_dim(tmp_path) -> None:
     """Fragment with a known-dim embedding -> peek returns that dim."""
     import struct
 
-    from skein.models import FragmentCreate, IdentityCreate, ScopeCreate
+    from wevex.models import FragmentCreate, IdentityCreate, ScopeCreate
 
-    st = Storage(str(tmp_path / "skein.db"))
+    st = Storage(str(tmp_path / "wevex.db"))
     ident = st.get_or_create_identity(
         IdentityCreate(handle="user:peek-test", type="user", name="peek-test"),
     )

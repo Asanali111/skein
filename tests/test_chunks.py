@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from skein.embeddings import HashEmbeddingProvider, vec_to_bytes
-from skein.ingest import _chunk_text, ingest_directory
-from skein.models import (
+from wevex.embeddings import HashEmbeddingProvider, vec_to_bytes
+from wevex.ingest import _chunk_text, ingest_directory
+from wevex.models import (
     ChunkCreate, ChunkSearchRequest, IdentityCreate, ScopeCreate,
 )
-from skein.retrieval import search_chunks
+from wevex.retrieval import search_chunks
 
 
 # ---------------------------------------------------------------------------
@@ -69,7 +69,7 @@ def fake_repo(tmp_path: Path) -> Path:
     (repo / "docs" / "README.md").write_text(textwrap.dedent("""
         # Project
 
-        This is a sample project for testing Skein's RAG ingestion.
+        This is a sample project for testing Wevex's RAG ingestion.
 
         ## Authentication
 

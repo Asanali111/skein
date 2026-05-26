@@ -1,13 +1,13 @@
 """Cross-session handoff — the core "context bus" value-prop.
 
-Simulates two LLM tools sharing one Skein store: tool A writes a fragment
+Simulates two LLM tools sharing one Wevex store: tool A writes a fragment
 in one session, tool B (later) recalls it without the user re-pasting
 context. We don't actually fork a subprocess — the "session boundary" is
 conceptual. What we measure is whether a fragment written by one
 ``source_tool`` is retrievable by a query issued from a *different*
 ``source_tool``.
 
-Why this matters: every Skein pitch leans on "tool A captures, tool B
+Why this matters: every Wevex pitch leans on "tool A captures, tool B
 recalls." A bench that doesn't verify it leaves the headline claim
 unmeasured.
 

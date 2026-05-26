@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from skein.clients import AntigravityClient
+from wevex.clients import AntigravityClient
 
 
 @pytest.fixture
@@ -53,10 +53,10 @@ class TestAntigravityClient:
         config = ag_dir / "mcp_config.json"
         assert config.exists()
         data = json.loads(config.read_text())
-        assert "skein" in data["mcpServers"]
-        skein = data["mcpServers"]["skein"]
-        assert skein["serverUrl"] == "http://127.0.0.1:8765/mcp"
-        assert skein["headers"]["Authorization"] == "Bearer secret-token"
+        assert "wevex" in data["mcpServers"]
+        wevex = data["mcpServers"]["wevex"]
+        assert wevex["serverUrl"] == "http://127.0.0.1:8765/mcp"
+        assert wevex["headers"]["Authorization"] == "Bearer secret-token"
 
     def test_preserves_other_servers(self, fake_home):
         ag_dir = fake_home / ".gemini" / "antigravity"
@@ -77,7 +77,7 @@ class TestAntigravityClient:
         data = json.loads((ag_dir / "mcp_config.json").read_text())
         assert "supabase" in data["mcpServers"]
         assert "github-mcp" in data["mcpServers"]
-        assert "skein" in data["mcpServers"]
+        assert "wevex" in data["mcpServers"]
 
     def test_cleans_up_legacy_company_brain_entry(self, fake_home):
         ag_dir = fake_home / ".gemini" / "antigravity"
@@ -99,7 +99,7 @@ class TestAntigravityClient:
         data = json.loads((ag_dir / "mcp_config.json").read_text())
         assert "company-brain" not in data["mcpServers"]
         assert "supabase" in data["mcpServers"]
-        assert "skein" in data["mcpServers"]
+        assert "wevex" in data["mcpServers"]
 
     def test_idempotent(self, fake_home):
         ag_dir = fake_home / ".gemini" / "antigravity"
@@ -110,8 +110,8 @@ class TestAntigravityClient:
             _connect(client, token=f"tok-{i}")
 
         data = json.loads((ag_dir / "mcp_config.json").read_text())
-        assert list(data["mcpServers"]).count("skein") == 1
-        assert data["mcpServers"]["skein"]["headers"]["Authorization"] == "Bearer tok-2"
+        assert list(data["mcpServers"]).count("wevex") == 1
+        assert data["mcpServers"]["wevex"]["headers"]["Authorization"] == "Bearer tok-2"
 
     def test_unreadable_file_backed_up(self, fake_home):
         ag_dir = fake_home / ".gemini" / "antigravity"
@@ -124,4 +124,4 @@ class TestAntigravityClient:
         assert (ag_dir / "mcp_config.json.bak").exists()
         # New file is valid JSON with our entry
         data = json.loads((ag_dir / "mcp_config.json").read_text())
-        assert "skein" in data["mcpServers"]
+        assert "wevex" in data["mcpServers"]

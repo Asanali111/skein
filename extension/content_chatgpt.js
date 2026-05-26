@@ -1,4 +1,4 @@
-// Skein content script — chatgpt.com / chat.openai.com
+// Wevex content script — chatgpt.com / chat.openai.com
 //
 // Site-specific selectors only. Shared core in content_common.js.
 //
@@ -56,7 +56,7 @@
     document.execCommand("insertText", false, text);
   }
 
-  // Iter 35: assistant turns for Save-to-Skein. ChatGPT marks turn role
+  // Iter 35: assistant turns for Save-to-Wevex. ChatGPT marks turn role
   // explicitly via `data-message-author-role="assistant"` on the
   // outermost turn container — that attribute has been stable across
   // every UI revamp since 2024.
@@ -67,12 +67,12 @@
     return Array.from(nodes);
   }
 
-  if (!globalThis.__SkeinCommon) {
-    console.warn("[skein] content_common.js not loaded; aborting chatgpt.com script");
+  if (!globalThis.__WevexCommon) {
+    console.warn("[wevex] content_common.js not loaded; aborting chatgpt.com script");
     return;
   }
 
-  globalThis.__SkeinCommon.init({
+  globalThis.__WevexCommon.init({
     siteName: "chatgpt.com",
     findPromptElement,
     findSendButton,

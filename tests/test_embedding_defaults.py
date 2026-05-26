@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from skein.embeddings import (
+from wevex.embeddings import (
     BM25OnlyProvider,
     EmbeddingProvider,
     FastembedProvider,

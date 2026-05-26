@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from skein.embeddings import HashEmbeddingProvider
-from skein.models import IdentityCreate, ScopeCreate
-from skein.passive import promote_scanned_facts
-from skein.scanner import ScannedFact
-from skein.storage import Storage
+from wevex.embeddings import HashEmbeddingProvider
+from wevex.models import IdentityCreate, ScopeCreate
+from wevex.passive import promote_scanned_facts
+from wevex.scanner import ScannedFact
+from wevex.storage import Storage
 
 
 @pytest.fixture
@@ -167,8 +167,8 @@ def test_rescan_legacy_unkeyed_duplicates_get_consolidated(storage_setup) -> Non
     scanner left them.
     """
     storage, scope, ident, provider = storage_setup
-    from skein.models import CommitCreate as CC
-    from skein.models import FragmentCreate as FC
+    from wevex.models import CommitCreate as CC
+    from wevex.models import FragmentCreate as FC
 
     commit = storage.create_commit(CC(
         author_id=ident.id, scope_id=scope.id, message="seed legacy",
@@ -275,8 +275,8 @@ def test_unchanged_content_retires_legacy_duplicate(storage_setup) -> None:
     storage, scope, ident, provider = storage_setup
     # Seed two identical legacy fragments by stubbing the dedup table — the
     # safest way is to write directly, bypassing promote.
-    from skein.models import FragmentCreate as FC
-    from skein.models import CommitCreate as CC
+    from wevex.models import FragmentCreate as FC
+    from wevex.models import CommitCreate as CC
     commit = storage.create_commit(CC(
         author_id=ident.id, scope_id=scope.id, message="seed",
     ))

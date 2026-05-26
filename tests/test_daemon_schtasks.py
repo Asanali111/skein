@@ -23,27 +23,27 @@ from unittest.mock import patch
 
 import pytest
 
-from skein import daemon as daemon_mod
+from wevex import daemon as daemon_mod
 
 
 @pytest.fixture
 def isolated_home(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     monkeypatch.setattr(daemon_mod, "DAEMON_LOG_DIR",
-                        tmp_path / ".config/skein/logs")
+                        tmp_path / ".config/wevex/logs")
     # Rebind module-level path constants so detection doesn't see the
-    # user's real ~/.config/skein/* files.
+    # user's real ~/.config/wevex/* files.
     monkeypatch.setattr(daemon_mod, "LAUNCHD_PLIST",
-                        tmp_path / "Library/LaunchAgents/com.skein.daemon.plist")
+                        tmp_path / "Library/LaunchAgents/com.wevex.daemon.plist")
     monkeypatch.setattr(daemon_mod, "SYSTEMD_UNIT_PATH",
-                        tmp_path / ".config/systemd/user/skein.service")
+                        tmp_path / ".config/systemd/user/wevex.service")
     monkeypatch.setattr(daemon_mod, "NOHUP_PID_FILE",
-                        tmp_path / ".config/skein/daemon.pid")
-    # Point skein_paths.skein_home() at the tmp_path so install/uninstall
+                        tmp_path / ".config/wevex/daemon.pid")
+    # Point wevex_paths.wevex_home() at the tmp_path so install/uninstall
     # writes its XML scratch file under the test tree.
-    from skein import paths as _skein_paths
-    monkeypatch.setattr(_skein_paths, "skein_home",
-                        lambda: tmp_path / ".config/skein")
+    from wevex import paths as _wevex_paths
+    monkeypatch.setattr(_wevex_paths, "wevex_home",
+                        lambda: tmp_path / ".config/wevex")
     return tmp_path
 
 
@@ -69,11 +69,11 @@ class TestInstallSchtasks:
         monkeypatch.setenv("USERDOMAIN", "TESTBOX")
         monkeypatch.setenv("USERNAME", "alice")
 
-        daemon_mod._install_schtasks(r"C:\Skein\Scripts\skein.exe")
+        daemon_mod._install_schtasks(r"C:\Wevex\Scripts\wevex.exe")
 
-        # The scratch XML lands under skein_home().
-        from skein import paths as _skein_paths
-        xml_path = _skein_paths.skein_home() / "schtasks.xml"
+        # The scratch XML lands under wevex_home().
+        from wevex import paths as _wevex_paths
+        xml_path = _wevex_paths.wevex_home() / "schtasks.xml"
         assert xml_path.exists(), "schtasks XML scratch file not written"
         raw = xml_path.read_bytes()
         # UTF-16 BOM check — schtasks /Create /XML rejects anything else.
@@ -82,7 +82,7 @@ class TestInstallSchtasks:
         # Decode + assert the XML mentions our user and binary.
         text = raw.decode("utf-16")
         assert "<UserId>TESTBOX\\alice</UserId>" in text
-        assert r"<Command>C:\Skein\Scripts\skein.exe</Command>" in text
+        assert r"<Command>C:\Wevex\Scripts\wevex.exe</Command>" in text
         assert "<Arguments>serve</Arguments>" in text
         # RestartOnFailure is the KeepAlive parity bit — must survive any
         # template refactor.
@@ -166,7 +166,7 @@ class TestDetectActiveBackendWindows:
                             lambda x: "schtasks" if x == "schtasks" else None)
 
         def fake_run(cmd, **kwargs):
-            # `/Query /TN Skein\Daemon` returns 0 → task exists.
+            # `/Query /TN Wevex\Daemon` returns 0 → task exists.
             if cmd[:3] == ["schtasks", "/Query", "/TN"]:
                 return _FakeProc(returncode=0, stdout="Task exists.")
             return _FakeProc(returncode=1)
@@ -194,12 +194,12 @@ class TestReadPidForBackendSchtasks:
         # labels are localised on non-English Windows installs — our parser
         # must key off "PID" appearing in the label, not the exact wording.
         stdout = (
-            "Folder: \\Skein\n"
+            "Folder: \\Wevex\n"
             "HostName: TESTBOX\n"
-            "TaskName: \\Skein\\Daemon\n"
+            "TaskName: \\Wevex\\Daemon\n"
             "Status: Running\n"
             "Logon Mode: Interactive only\n"
-            "Task To Run: skein.exe serve\n"
+            "Task To Run: wevex.exe serve\n"
             "Task PID: 9176\n"
             "Run As User: TESTBOX\\alice\n"
         )
@@ -222,7 +222,7 @@ class TestReadPidForBackendSchtasks:
 class TestCachedBackendSchtasks:
     def test_returns_schtasks_label_on_windows(self, isolated_home, monkeypatch):
         # Write the cached label.
-        cache = isolated_home / ".config/skein/backend"
+        cache = isolated_home / ".config/wevex/backend"
         cache.parent.mkdir(parents=True, exist_ok=True)
         cache.write_text("schtasks")
         monkeypatch.setattr(daemon_mod, "_BACKEND_CACHE_FILE", cache)
@@ -231,7 +231,7 @@ class TestCachedBackendSchtasks:
 
     def test_rejects_schtasks_label_off_windows(self, isolated_home, monkeypatch):
         # Stale cache from a different OS shouldn't poison detection.
-        cache = isolated_home / ".config/skein/backend"
+        cache = isolated_home / ".config/wevex/backend"
         cache.parent.mkdir(parents=True, exist_ok=True)
         cache.write_text("schtasks")
         monkeypatch.setattr(daemon_mod, "_BACKEND_CACHE_FILE", cache)
@@ -239,13 +239,13 @@ class TestCachedBackendSchtasks:
         assert daemon_mod._cached_backend() is None
 
 
-class TestResolveSkeinBinWindowsLayout:
-    def test_picks_up_scripts_skein_exe(self, tmp_path, monkeypatch):
-        """A Windows venv lays the binary at ``Scripts\\skein.exe``."""
+class TestResolveWevexBinWindowsLayout:
+    def test_picks_up_scripts_wevex_exe(self, tmp_path, monkeypatch):
+        """A Windows venv lays the binary at ``Scripts\\wevex.exe``."""
         prefix = tmp_path / "venv"
         scripts = prefix / "Scripts"
         scripts.mkdir(parents=True)
-        bin_path = scripts / "skein.exe"
+        bin_path = scripts / "wevex.exe"
         bin_path.write_text("placeholder")
         monkeypatch.setattr(sys, "prefix", str(prefix))
-        assert daemon_mod._resolve_skein_bin() == str(bin_path)
+        assert daemon_mod._resolve_wevex_bin() == str(bin_path)

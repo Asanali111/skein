@@ -5,11 +5,11 @@ import time
 
 import pytest
 
-from skein.models import (
+from wevex.models import (
     CommitCreate, FragmentCreate, FragmentUpdate,
     IdentityCreate, LeaseCreate, ScopeCreate, ScopeMembershipCreate,
 )
-from skein.storage import ConflictError, Storage
+from wevex.storage import ConflictError, Storage
 
 
 # ---------------------------------------------------------------------------
@@ -398,7 +398,7 @@ def test_lease_cleanup(seeded_storage: Storage) -> None:
 # ---------------------------------------------------------------------------
 
 def test_vector_search(seeded_storage: Storage, provider) -> None:
-    from skein.embeddings import vec_to_bytes
+    from wevex.embeddings import vec_to_bytes
 
     st = seeded_storage
     scope = st._test_scope

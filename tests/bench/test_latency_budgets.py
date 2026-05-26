@@ -1,6 +1,6 @@
 """Pytest gate for the latency scenarios.
 
-Asserts that the ephemeral Skein hits the budgets declared in ``bench/budgets.py``.
+Asserts that the ephemeral Wevex hits the budgets declared in ``bench/budgets.py``.
 A regression that blows past those budgets will fail this test.
 """
 from __future__ import annotations

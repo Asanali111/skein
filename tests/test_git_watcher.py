@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from skein.embeddings import HashEmbeddingProvider
-from skein.git_watcher import (
+from wevex.embeddings import HashEmbeddingProvider
+from wevex.git_watcher import (
     GitCommit,
     GitCommitWatcher,
     commit_to_fact,
@@ -17,9 +17,9 @@ from skein.git_watcher import (
     parse_conventional,
     read_commits_since,
 )
-import skein.git_watcher as git_watcher
-from skein.models import IdentityCreate, ScopeCreate
-from skein.storage import Storage
+import wevex.git_watcher as git_watcher
+from wevex.models import IdentityCreate, ScopeCreate
+from wevex.storage import Storage
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +99,7 @@ def test_is_noise_initial_commit() -> None:
     assert is_noise_commit(_commit("INITIAL COMMIT"))
     # Real-world variants from IDE git tools and templates.
     assert is_noise_commit(_commit("Initial commit."))
-    assert is_noise_commit(_commit("initial commit of skein"))
+    assert is_noise_commit(_commit("initial commit of wevex"))
 
 
 def test_docs_adr_not_noise() -> None:
@@ -203,7 +203,7 @@ def test_read_commits_returns_empty_for_nongit(tmp_path: Path) -> None:
 
 @pytest.fixture
 def watcher_setup(tmp_git_repo, tmp_path):
-    db = tmp_path / "skein.db"
+    db = tmp_path / "wevex.db"
     storage = Storage(str(db))
     ident = storage.get_or_create_identity(
         IdentityCreate(handle="user:gw-test", type="user", name="t"),

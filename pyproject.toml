@@ -3,11 +3,8 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-# Published to PyPI as `skn` because `skein` is taken by an unrelated Apache
-# project (Hadoop YARN deployer). The CLI command remains `skein` — see
-# [project.scripts] below. Users install with `pip install skn`, run with
-# `skein up`.
-name = "skn"
+# PyPI package + CLI binary share the name `wevex`.
+name = "wevex"
 version = "0.2.0"
 description = "Local MCP context bus for coding LLMs (Claude Code, Cursor, Codex, Gemini CLI, Antigravity, Copilot, VS Code, opencode)."
 readme = "README.md"
@@ -25,7 +22,7 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   # Iter 28 Windows port: daemon backend gains a Scheduled Task option so
-  # `skein up` produces a logon-persistent service on Windows the same way
+  # `wevex up` produces a logon-persistent service on Windows the same way
   # it produces a launchd agent on macOS / systemd-user unit on Linux.
   "Operating System :: MacOS :: MacOS X",
   "Operating System :: POSIX :: Linux",
@@ -52,10 +49,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Cloud embedding provider — opt-in. Skein defaults to the local fastembed
-# provider so `pip install skein && skein up` is zero-config.
+# Cloud embedding provider — opt-in. Wevex defaults to the local fastembed
+# provider so `pip install wevex && wevex up` is zero-config.
 # (The Gemini embedding provider was removed in iter 27; see
-# skein/embeddings.py module docstring. The Gemini CLI as an LLM client
+# wevex/embeddings.py module docstring. The Gemini CLI as an LLM client
 # is unrelated and remains fully supported.)
 openai = ["openai>=1.30"]
 test = [
@@ -70,19 +67,19 @@ dev = [
 ]
 
 [project.scripts]
-skein = "skein.cli:main"
+wevex = "wevex.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/Asanali111/skein"
-Documentation = "https://github.com/Asanali111/skein/blob/main/README.md"
+Homepage = "https://github.com/Asanali111/wevex"
+Documentation = "https://github.com/Asanali111/wevex/blob/main/README.md"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["skein*"]
+include = ["wevex*"]
 exclude = ["_archive_v2*", "tests*", "examples*"]
 
 [tool.setuptools.package-data]
-skein = ["schema.sql", "templates/*"]
+wevex = ["schema.sql", "templates/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

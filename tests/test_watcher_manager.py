@@ -1,6 +1,6 @@
 """Tests for watcher_manager: spawn / is_running / kill of detached watchers.
 
-We never actually fork ``skein watch`` here — that would couple the test to
+We never actually fork ``wevex watch`` here — that would couple the test to
 the live install. Instead we monkeypatch ``subprocess.Popen`` to return a
 predictable PID and test the bookkeeping (PID file, slug, kill).
 """
@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from skein import watcher_manager
-from skein.projects import ProjectEntry
+from wevex import watcher_manager
+from wevex.projects import ProjectEntry
 
 
 @pytest.fixture
@@ -103,15 +103,15 @@ class TestSpawn:
             captured["creationflags"] = kwargs.get("creationflags", 0)
             return _FakeProc(pid=42)
         monkeypatch.setattr("subprocess.Popen", fake_popen)
-        # Pretend skein binary exists. Use the platform's "everything is
+        # Pretend wevex binary exists. Use the platform's "everything is
         # always on disk" sentinel so we don't depend on a real layout.
         monkeypatch.setattr("pathlib.Path.is_file", lambda self: True)
 
         sentinel_bin = (
-            "C:\\Skein\\skein.exe" if sys.platform.startswith("win")
-            else "/usr/local/bin/skein"
+            "C:\\Wevex\\wevex.exe" if sys.platform.startswith("win")
+            else "/usr/local/bin/wevex"
         )
-        pid = watcher_manager.spawn(entry, skein_bin=sentinel_bin)
+        pid = watcher_manager.spawn(entry, wevex_bin=sentinel_bin)
         assert pid == 42
         assert watcher_manager.pid_file_for(entry).read_text() == "42"
         assert captured["cmd"][0] == sentinel_bin
@@ -139,7 +139,7 @@ class TestSpawn:
             return _FakeProc(pid=99)
         monkeypatch.setattr("subprocess.Popen", fake_popen)
 
-        result = watcher_manager.spawn(entry, skein_bin="/skein")
+        result = watcher_manager.spawn(entry, wevex_bin="/wevex")
         assert result is None
         assert called["flag"] is False
 
@@ -180,7 +180,7 @@ class TestKill:
 
 class TestKillAll:
     def test_kills_all_running(self, isolated, entry, monkeypatch, tmp_path):
-        from skein import projects as projects_mod
+        from wevex import projects as projects_mod
         # Use a temporary registry file
         fake_registry = tmp_path / "projects.json"
         monkeypatch.setattr(projects_mod, "REGISTRY_PATH", fake_registry)

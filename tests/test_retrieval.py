@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import pytest
 
-from skein.embeddings import HashEmbeddingProvider, vec_to_bytes
-from skein.models import (
+from wevex.embeddings import HashEmbeddingProvider, vec_to_bytes
+from wevex.models import (
     FragmentCreate, IdentityCreate, RecallRequest, ScopeCreate,
 )
-from skein.retrieval import _rrf_fuse, recall
-from skein.storage import Storage
+from wevex.retrieval import _rrf_fuse, recall
+from wevex.storage import Storage
 
 
 @pytest.fixture
@@ -148,7 +148,7 @@ def test_recall_scope_not_found(storage: Storage) -> None:
 def test_recall_empty_db(storage: Storage) -> None:
     provider = HashEmbeddingProvider()
     # Seed minimal identity + scope
-    from skein.models import IdentityCreate, ScopeCreate
+    from wevex.models import IdentityCreate, ScopeCreate
     user = storage.create_identity(IdentityCreate(
         handle="user:empty", type="user", name="Empty",
     ))
@@ -175,7 +175,7 @@ def test_recall_result_ranking(filled_storage: Storage) -> None:
 
 def test_recall_scope_lineage(filled_storage: Storage) -> None:
     """A query on a child scope should return parent-scope fragments too."""
-    from skein.models import IdentityCreate, ScopeCreate, FragmentCreate
+    from wevex.models import IdentityCreate, ScopeCreate, FragmentCreate
 
     st = filled_storage
     parent_scope = st._test_scope

@@ -1,7 +1,7 @@
-"""CLI entry: ``python -m bench --adapter skein --mode ephemeral`` or ``--mode live``.
+"""CLI entry: ``python -m bench --adapter wevex --mode ephemeral`` or ``--mode live``.
 
 The live mode is read-only against the daemon at 127.0.0.1:8765 (skips
-mutable scenarios). Ephemeral mode spins up a fresh in-process Skein on a
+mutable scenarios). Ephemeral mode spins up a fresh in-process Wevex on a
 temp SQLite DB and runs every scenario.
 """
 from __future__ import annotations
@@ -16,20 +16,20 @@ from .runner import run
 
 
 def _build_adapter(name: str, mode: str) -> ReadOnlyAdapter:
-    if name == "skein":
+    if name == "wevex":
         if mode == "live":
-            from .adapters.skein_live import SkeinLiveAdapter
-            return SkeinLiveAdapter()
+            from .adapters.wevex_live import WevexLiveAdapter
+            return WevexLiveAdapter()
         if mode == "ephemeral":
-            from .adapters.skein_ephemeral import SkeinEphemeralAdapter
-            return SkeinEphemeralAdapter()
+            from .adapters.wevex_ephemeral import WevexEphemeralAdapter
+            return WevexEphemeralAdapter()
         raise SystemExit(f"unknown mode: {mode}")
     raise SystemExit(f"unknown adapter: {name}")
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="python -m bench")
-    p.add_argument("--adapter", default="skein", help="adapter name (default: skein)")
+    p.add_argument("--adapter", default="wevex", help="adapter name (default: wevex)")
     p.add_argument("--mode", choices=["live", "ephemeral"], default="ephemeral",
                    help="live = read-only against running daemon; "
                         "ephemeral = fresh in-process daemon")

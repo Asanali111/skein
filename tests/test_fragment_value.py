@@ -17,11 +17,11 @@ from __future__ import annotations
 
 import pytest
 
-from skein.embeddings import HashEmbeddingProvider, vec_to_bytes
-from skein.models import FragmentCreate, RecallRequest
-from skein.retrieval import recall
-from skein.storage import Storage
-from skein.value import (
+from wevex.embeddings import HashEmbeddingProvider, vec_to_bytes
+from wevex.models import FragmentCreate, RecallRequest
+from wevex.retrieval import recall
+from wevex.storage import Storage
+from wevex.value import (
     VALUE_CEILING, VALUE_FLOOR, compute_fragment_value,
 )
 
@@ -258,7 +258,7 @@ def test_legacy_db_backfills_value_on_migration(tmp_path) -> None:
     # the fragments table without the column.
     s = Storage(str(db_path))
     try:
-        from skein.models import IdentityCreate, ScopeCreate
+        from wevex.models import IdentityCreate, ScopeCreate
         user = s.create_identity(IdentityCreate(
             handle="user:legacy", type="user", name="Legacy",
         ))
@@ -273,7 +273,7 @@ def test_legacy_db_backfills_value_on_migration(tmp_path) -> None:
             ftype="decision", tool=None,
         ) if False else None
         # Avoid the fixture indirection — just insert directly.
-        from skein.models import FragmentCreate
+        from wevex.models import FragmentCreate
         f_decision = s.create_fragment(FragmentCreate(
             type="decision",
             content="adopt Postgres for the primary store.",

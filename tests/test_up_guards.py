@@ -1,4 +1,4 @@
-"""Tests for the iter-15 `skein up` safety guards.
+"""Tests for the iter-15 `wevex up` safety guards.
 
 Verifies the .git-required check that prevents the home-directory mass-ingest
 disaster from recurring.
@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from skein.cli import main
+from wevex.cli import main
 
 
 @pytest.fixture
@@ -19,15 +19,15 @@ def runner():
 
 
 def test_up_refuses_without_git(runner, tmp_path, monkeypatch):
-    """`skein up` in a dir with no .git should refuse, not ingest."""
+    """`wevex up` in a dir with no .git should refuse, not ingest."""
     # Make sure no escape-hatch is set
-    monkeypatch.delenv("SKEIN_ALLOW_NO_GIT", raising=False)
-    # Make sure SKEIN_CONFIG points at an empty config dir so init runs cleanly
-    fake_config = tmp_path / "skein-config"
+    monkeypatch.delenv("WEVEX_ALLOW_NO_GIT", raising=False)
+    # Make sure WEVEX_CONFIG points at an empty config dir so init runs cleanly
+    fake_config = tmp_path / "wevex-config"
     fake_config.mkdir()
-    monkeypatch.setenv("SKEIN_CONFIG", str(fake_config / "config.json"))
+    monkeypatch.setenv("WEVEX_CONFIG", str(fake_config / "config.json"))
 
-    # Run `skein up <some-non-git-dir>` against a path that has no .git
+    # Run `wevex up <some-non-git-dir>` against a path that has no .git
     non_git = tmp_path / "not-a-repo"
     non_git.mkdir()
     result = runner.invoke(
@@ -40,11 +40,11 @@ def test_up_refuses_without_git(runner, tmp_path, monkeypatch):
 
 
 def test_up_allows_no_git_with_escape_hatch(runner, tmp_path, monkeypatch):
-    """SKEIN_ALLOW_NO_GIT=1 bypasses the guard."""
-    monkeypatch.setenv("SKEIN_ALLOW_NO_GIT", "1")
-    fake_config = tmp_path / "skein-config"
+    """WEVEX_ALLOW_NO_GIT=1 bypasses the guard."""
+    monkeypatch.setenv("WEVEX_ALLOW_NO_GIT", "1")
+    fake_config = tmp_path / "wevex-config"
     fake_config.mkdir()
-    monkeypatch.setenv("SKEIN_CONFIG", str(fake_config / "config.json"))
+    monkeypatch.setenv("WEVEX_CONFIG", str(fake_config / "config.json"))
 
     non_git = tmp_path / "not-a-repo"
     non_git.mkdir()

@@ -1,4 +1,4 @@
-"""Tests for ``skein.connections`` registry — CRUD on connections.json."""
+"""Tests for ``wevex.connections`` registry — CRUD on connections.json."""
 from __future__ import annotations
 
 import json
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from skein import connections as conns
+from wevex import connections as conns
 
 
 @pytest.fixture

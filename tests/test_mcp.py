@@ -40,7 +40,7 @@ def test_initialize(client: TestClient) -> None:
     })
     assert "result" in result
     assert result["result"]["protocolVersion"] == "2024-11-05"
-    assert result["result"]["serverInfo"]["name"] == "skein"
+    assert result["result"]["serverInfo"]["name"] == "wevex"
 
 
 def test_initialize_includes_recall_first_instructions(client: TestClient) -> None:
@@ -139,7 +139,7 @@ def test_remember_auto_creates_unknown_scope(client: TestClient) -> None:
 
     The old behaviour ("Scope X not found, create it first") was a needless
     speed bump for the AI — it had to call back to the human to run
-    `skein scope create` before remembering anything. The auto-create path
+    `wevex scope create` before remembering anything. The auto-create path
     is bounded by ``_ensure_scope`` which only creates well-shaped handles."""
     r = mcp(client, "tools/call", {
         "name": "remember",
@@ -155,7 +155,7 @@ def test_remember_auto_creates_unknown_scope(client: TestClient) -> None:
 
 def test_recall_auto_resolves_missing_scope(client: TestClient) -> None:
     """Iteration 11: MCP `recall` may be called without a `scope` arg —
-    Skein resolves it from the daemon's cwd."""
+    Wevex resolves it from the daemon's cwd."""
     r = mcp(client, "tools/call", {
         "name": "recall",
         "arguments": {"query": "anything"},
@@ -304,7 +304,7 @@ def test_initialize_records_client_name(client: TestClient) -> None:
         "capabilities": {},
     })
     # Verify it's recorded
-    from skein.dependencies import get_storage
+    from wevex.dependencies import get_storage
     storage = get_storage()
     rows = storage.list_mcp_clients()
     names = {r["client_name"] for r in rows}
@@ -374,9 +374,9 @@ def test_mcp_recall_emits_event(client: TestClient, tmp_path, monkeypatch) -> No
     Verifies the integration between the MCP handlers and `events.log_event`.
     """
     import json as _json
-    from skein.events import reset_event_logger
+    from wevex.events import reset_event_logger
     events_path = tmp_path / "events.jsonl"
-    monkeypatch.setenv("SKEIN_EVENTS_PATH", str(events_path))
+    monkeypatch.setenv("WEVEX_EVENTS_PATH", str(events_path))
     reset_event_logger()
     try:
         scope = _seed_scope(client, "project:events-test")
@@ -475,7 +475,7 @@ def test_claim_and_release_lease(client: TestClient) -> None:
 
 def test_resources_list_is_empty(client: TestClient) -> None:
     """Per the MCP spec, `resources/list` enumerates concrete resources only.
-    Skein's context URIs are templates (parameterised by scope), so they live
+    Wevex's context URIs are templates (parameterised by scope), so they live
     under `resources/templates/list` and `resources/list` returns []."""
     result = mcp(client, "resources/list")
     assert result["result"]["resources"] == []
@@ -500,7 +500,7 @@ def test_read_agents_md_resource(client: TestClient) -> None:
     })
     contents = result["result"]["contents"]
     assert contents
-    assert "AGENTS.md" in contents[0]["text"] or "Skein" in contents[0]["text"]
+    assert "AGENTS.md" in contents[0]["text"] or "Wevex" in contents[0]["text"]
 
 
 def test_read_decisions_resource(client: TestClient) -> None:
@@ -564,7 +564,7 @@ def test_get_session_start_prompt(client: TestClient) -> None:
     assert len(messages) == 1
     assert messages[0]["role"] == "user"
     text = messages[0]["content"]["text"]
-    assert "AGENTS.md" in text or "Skein" in text
+    assert "AGENTS.md" in text or "Wevex" in text
 
 
 def test_get_unknown_prompt(client: TestClient) -> None:
