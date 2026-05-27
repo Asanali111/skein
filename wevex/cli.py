@@ -1027,7 +1027,7 @@ def _doctor_reindex_embeddings() -> None:
         ui.blank()
 
         rows = storage._conn.execute(
-            "SELECT id, content, embedding FROM fragments "
+            "SELECT id, content, content_embedding FROM fragments "
             "WHERE is_stale = 0 AND content IS NOT NULL AND content != ''",
         ).fetchall()
         total = len(rows)
@@ -1042,9 +1042,9 @@ def _doctor_reindex_embeddings() -> None:
         mismatched = 0
         for row in rows:
             existing_dim = None
-            if row["embedding"]:
+            if row["content_embedding"]:
                 try:
-                    existing_dim = len(bytes_to_vec(row["embedding"]))
+                    existing_dim = len(bytes_to_vec(row["content_embedding"]))
                 except Exception:
                     existing_dim = None
             if existing_dim == target_dim and existing_dim is not None:
@@ -1056,7 +1056,7 @@ def _doctor_reindex_embeddings() -> None:
                 vec = provider.embed_one(row["content"])
                 blob = vec_to_bytes(vec)
                 storage._conn.execute(
-                    "UPDATE fragments SET embedding = ? WHERE id = ?",
+                    "UPDATE fragments SET content_embedding = ? WHERE id = ?",
                     (blob, row["id"]),
                 )
                 reindexed += 1
