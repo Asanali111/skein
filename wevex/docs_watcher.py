@@ -272,6 +272,13 @@ def _process_file(repo: Path, path: Path) -> list[ScannedFact]:
          ``/decisions/``) → typed ``decision``.
       4. Other docs → short → single ``state``; long → split by headings.
     """
+    # Don't follow symlinks out of the repo — a symlinked doc could point at a
+    # secret outside the tree and get ingested into recall.
+    try:
+        if path.is_symlink() or not path.resolve().is_relative_to(repo.resolve()):
+            return []
+    except OSError:
+        return []
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:

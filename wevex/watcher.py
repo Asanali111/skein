@@ -106,6 +106,17 @@ class _BaseWatcher:
     def _should_track(self, path: Path) -> bool:
         if not path.is_absolute():
             return False
+        # Never follow symlinks. A symlinked file inside the repo (or a file
+        # under a symlinked directory) can resolve to a secret outside the
+        # project — ~/.ssh/id_rsa, /etc/passwd — and would otherwise be read,
+        # chunked, embedded, and surfaced via search_code / recall.
+        try:
+            if path.is_symlink():
+                return False
+            if not path.resolve().is_relative_to(self.root.resolve()):
+                return False
+        except OSError:
+            return False
         try:
             rel = path.relative_to(self.root)
         except ValueError:

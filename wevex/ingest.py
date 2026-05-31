@@ -374,6 +374,12 @@ def _walk(
             ext = path.suffix.lower()
             if ext not in include_exts:
                 continue
+            # Skip symlinked files: os.walk already won't descend symlinked
+            # dirs (followlinks=False), but a symlinked *file* with an
+            # ingestable extension can still point at a secret outside the
+            # tree (e.g. notes.md -> ~/.ssh/id_rsa) and get indexed.
+            if path.is_symlink():
+                continue
             rel = path.relative_to(root).as_posix()
             if any(fnmatch.fnmatch(rel, g) for g in glob_excludes):
                 continue
