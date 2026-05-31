@@ -155,16 +155,28 @@ def _quote_bin(wevex_bin: str) -> str:
     """Quote a binary path for embedding in a shell command string.
 
     Claude Code's hook runner spawns each ``command`` via the OS shell
-    (bash/zsh on POSIX, cmd.exe on Windows). Both shells treat a
-    double-quoted path as a single token, so wrapping in ``"..."`` handles
-    the common case of binaries under ``C:\\Program Files\\...`` on Windows
-    or ``~/Library/Application Support/...`` on macOS. We don't try to
-    escape internal quote characters — binary paths don't have them.
+    (bash/zsh on POSIX, cmd.exe on Windows). The old implementation only
+    quoted when a *space* was present — so a path with no space but a shell
+    metacharacter (``C:\\tools\\a&calc.exe\\wevex.exe`` on Windows, or
+    ``/opt/a;b/wevex`` on POSIX) was emitted bare and the shell would treat
+    ``&`` / ``;`` / ``|`` as a command separator: command injection on every
+    hook event, baked into the user's ``settings.json``.
+
+    POSIX: ``shlex.quote`` is the correct, complete escaping (and leaves a
+    bare ``wevex`` bare). Windows cmd.exe has no equivalent stdlib helper;
+    double-quoting makes the path a single token and neutralises the
+    separators ``& | < > ( )``. We quote whenever a space or metacharacter is
+    present so the safe common case (a plain ``wevex``) stays unquoted.
     """
-    if " " in wevex_bin and not (
-        wevex_bin.startswith('"') and wevex_bin.endswith('"')
-    ):
-        return f'"{wevex_bin}"'
+    import os
+    import shlex
+
+    if os.name != "nt":
+        return shlex.quote(wevex_bin)
+    if wevex_bin.startswith('"') and wevex_bin.endswith('"'):
+        return wevex_bin
+    if any(c in wevex_bin for c in ' \t&|<>^()%"'):
+        return '"' + wevex_bin + '"'
     return wevex_bin
 
 
@@ -314,7 +326,10 @@ def _read_json_or_empty(path: Path) -> dict:
 
 
 def _write_json(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
-        f.write("\n")
+    # Atomic write: this merges into the user's own .claude/settings.json,
+    # which can hold unrelated hooks/permissions. A plain open("w") truncates
+    # first, so a crash or concurrent `wevex up`/`connect` between truncate and
+    # full dump leaves the user's settings empty or half-written. tmp+replace
+    # makes the swap atomic.
+    from . import paths as _paths
+    _paths.atomic_write_text(path, json.dumps(data, indent=2) + "\n")
