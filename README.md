@@ -45,22 +45,27 @@ One local daemon. Every coding client connects via MCP (or AGENTS.md for non-MCP
 
 **Two commands.** That's it.
 
-```bash
-# 1. Install (once)
-pip install wevex
+**macOS / Linux:**
 
-# 2. Activate in any project
-cd ~/Documents/your-project
-wevex up
+```bash
+pip install wevex                          # 1. install once
+cd ~/Documents/your-project && wevex up    # 2. activate in any project
 ```
 
-Other install paths that work the same:
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/Asanali111/wevex/main/bin/install.ps1 | iex   # 1. install once
+cd ~\Documents\your-project ; wevex up                                              # 2. activate in any project
+```
+
+The Windows one-liner creates an isolated environment and puts `wevex` on your PATH automatically, so it works in the same terminal — no `pip`/PATH fiddling. (See [Windows notes](#windows-notes) for why plain `pip install` needs this.)
+
+Other install paths that work the same on **any** OS:
 
 ```bash
 pipx install wevex --python python3.12   # recommended for CLI tools — isolated env, auto-PATH (pin required until onnxruntime ships cp314 wheels)
-uv tool install wevex       # modern, fastest
-pip3 install wevex          # macOS users where `pip` points at Python 2
-py -m pip install wevex     # Windows
+uv tool install wevex                    # modern, fastest
 ```
 
 After `wevex up`, every detected client automatically has shared context for the project. The daemon runs as a background service that survives terminal close **and reboots** on all three OSes — launchd agent on macOS, systemd-user unit on Linux, Scheduled Task (logon trigger, restart-on-failure) on Windows.
@@ -90,13 +95,13 @@ After `wevex up`, every detected client automatically has shared context for the
 
 ### Windows notes
 
-**Install.** Use the one-liner PowerShell installer — it creates an isolated venv and sets your PATH automatically:
+**Install.** Use the one-liner PowerShell installer from the [quick start](#quick-start) — it creates an isolated environment and sets your PATH automatically, so `wevex` works in the same terminal:
 
 ```powershell
 irm https://raw.githubusercontent.com/Asanali111/wevex/main/bin/install.ps1 | iex
 ```
 
-Alternatively, `pipx install wevex` also handles PATH correctly.  Plain `pip install wevex` works too but puts the `wevex` binary in `%APPDATA%\Python\PythonXYZ\Scripts\` which is not on PATH by default. If you see `wevex: CommandNotFoundException` after a pip install, either re-run `py -m wevex up` once (wevex fixes its own PATH on first run) or use the installer above.
+**Why not plain `pip install`?** It works, but a user-scope pip install drops `wevex.exe` in `%APPDATA%\Python\PythonXYZ\Scripts\`, which Windows does not put on PATH by default — so `wevex up` fails with `CommandNotFoundException`. The installer above (and `pipx install wevex`) sidestep this. If you already ran `pip install` and are stuck, run `py -m wevex up` once: wevex adds the missing directory to your PATH on first launch, then works normally from a new terminal.
 
 ---
 

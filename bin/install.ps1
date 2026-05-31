@@ -1,4 +1,4 @@
-# Wevex installer for Windows — one-time bootstrap.
+# Wevex installer for Windows -- one-time bootstrap.
 #
 # Usage (run in PowerShell):
 #   irm https://raw.githubusercontent.com/Asanali111/wevex/main/bin/install.ps1 | iex
@@ -12,7 +12,7 @@
 #   4. Add ~\.wevex\venv\Scripts to your user PATH permanently
 #   5. Print "now run wevex up"
 #
-# Idempotent — safe to re-run; updates an existing install in place.
+# Idempotent -- safe to re-run; updates an existing install in place.
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -60,7 +60,7 @@ if ((Test-Path (Join-Path $projectRoot "pyproject.toml")) -and
 # ---------------------------------------------------------------------------
 # 3. Create venv (if missing) and install
 # ---------------------------------------------------------------------------
-$wevexHome = Join-Path $env:USERPROFILE ".wevex"
+$wevexHome = if ($env:WEVEX_HOME) { $env:WEVEX_HOME } else { Join-Path $env:USERPROFILE ".wevex" }
 $venvDir   = Join-Path $wevexHome "venv"
 
 if (-not (Test-Path $venvDir)) {
@@ -69,20 +69,23 @@ if (-not (Test-Path $venvDir)) {
     Write-Ok "Created venv"
 }
 
-$venvPip   = Join-Path $venvDir "Scripts\pip.exe"
-$venvWevex = Join-Path $venvDir "Scripts\wevex.exe"
+$venvPython = Join-Path $venvDir "Scripts\python.exe"
+$venvWevex  = Join-Path $venvDir "Scripts\wevex.exe"
 
 Write-Host "  Installing Wevex (this may take a minute on first run)..."
-& $venvPip install --quiet --upgrade pip
+# Drive pip via `python -m pip` -- on Windows `pip.exe install -U pip` fails
+# because pip.exe is locked while running. The pip upgrade is best-effort.
+& $venvPython -m pip install --quiet --upgrade pip 2>$null
 if ($installFrom) {
-    & $venvPip install --quiet -e $installFrom
+    & $venvPython -m pip install --quiet -e $installFrom
 } else {
-    & $venvPip install --quiet --upgrade wevex
+    & $venvPython -m pip install --quiet --upgrade wevex
 }
+if ($LASTEXITCODE -ne 0) { Write-Die "pip install failed (exit $LASTEXITCODE). See output above." }
 Write-Ok "Wevex installed in $venvDir"
 
 if (-not (Test-Path $venvWevex)) {
-    Write-Die "Install completed but $venvWevex not found — please file a bug."
+    Write-Die "Install completed but $venvWevex not found -- please file a bug."
 }
 
 # ---------------------------------------------------------------------------
@@ -104,7 +107,8 @@ if ($scriptsDir -notin $entries) {
 # ---------------------------------------------------------------------------
 # 5. Summary
 # ---------------------------------------------------------------------------
-$installedVersion = (& $venvWevex --version 2>$null) -replace "wevex ", ""
+# `wevex --version` prints e.g. "wevex, version 0.2.1" -- pull out just the number.
+$installedVersion = ((& $venvWevex --version 2>$null) | Out-String).Trim() -replace '.*?([0-9][0-9.]*).*', '$1'
 Write-Host ""
 Write-Ok "Wevex $installedVersion ready.  Now run:"
 Write-Host ""
