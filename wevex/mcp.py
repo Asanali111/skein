@@ -47,11 +47,17 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
 logger = logging.getLogger("wevex.mcp")
 
 # MCP protocol version we advertise
 MCP_PROTOCOL_VERSION = "2024-11-05"
+
+# Upper bound on JSON-RPC batch size. Each element can drive an embedding +
+# SQLite round-trip, so an unbounded batch is a cheap CPU-exhaustion knob for
+# any token-holding caller. 50 is comfortably above any real client's needs.
+MAX_BATCH_SIZE = 50
 
 router = APIRouter(tags=["mcp"])
 
@@ -106,7 +112,13 @@ async def mcp_endpoint(request: Request) -> JSONResponse:
 
     # Batch requests
     if isinstance(body, list):
-        responses = [await _handle_one(req, request) for req in body]
+        if len(body) > MAX_BATCH_SIZE:
+            return _error_response(
+                None, -32600,
+                f"Batch too large: {len(body)} requests (max {MAX_BATCH_SIZE})",
+            )
+        responses = [await _handle_one(req, request) for req in body
+                     if isinstance(req, dict)]
         return JSONResponse(responses)
 
     # Single request / notification
@@ -127,12 +139,18 @@ async def mcp_endpoint(request: Request) -> JSONResponse:
 async def _handle_one(msg: dict[str, Any], request: Request) -> Optional[dict]:
     req_id = msg.get("id")
     method = msg.get("method", "")
-    params = msg.get("params") or {}
+    params = msg.get("params")
+    if params is None:
+        params = {}
 
     # Notification (no id) — process but don't respond
     is_notification = "id" not in msg
 
     try:
+        # Per JSON-RPC 2.0, `params` (when present) MUST be a structured value.
+        # We only support by-name params, so anything but an object is invalid.
+        if not isinstance(params, dict):
+            raise McpError(-32602, "Invalid params: expected an object")
         result = await _dispatch(method, params, request)
         if is_notification:
             return None
@@ -141,11 +159,25 @@ async def _handle_one(msg: dict[str, Any], request: Request) -> Optional[dict]:
         if is_notification:
             return None
         return _error_response(req_id, e.code, e.message, e.data)
-    except Exception as e:
+    except KeyError as e:
+        # A required argument was missing (tool handlers index args[...]).
+        # The key name is safe to surface and helps the caller fix the call.
+        if is_notification:
+            return None
+        return _error_response(req_id, -32602, f"Missing required parameter: {e}")
+    except ValidationError:
+        # Pydantic request-model validation failed — wrong type / shape.
+        if is_notification:
+            return None
+        return _error_response(req_id, -32602, "Invalid params")
+    except Exception:
+        # Genuine server-side fault. Log the full trace server-side, but do
+        # NOT echo str(e) to the caller — exception messages routinely carry
+        # absolute paths / SQL fragments that leak the daemon's internals.
         logger.exception("Unexpected error in MCP method %s", method)
         if is_notification:
             return None
-        return _error_response(req_id, -32603, "Internal error", {"detail": str(e)})
+        return _error_response(req_id, -32603, "Internal error")
 
 
 async def _dispatch(method: str, params: dict[str, Any], request: Request) -> Any:
@@ -174,7 +206,11 @@ async def _dispatch(method: str, params: dict[str, Any], request: Request) -> An
 
     if method == "tools/call":
         name = params.get("name")
-        args = params.get("arguments") or {}
+        args = params.get("arguments")
+        if args is None:
+            args = {}
+        if not isinstance(args, dict):
+            raise McpError(-32602, "Invalid params: 'arguments' must be an object")
         return await _call_tool(name, args, storage, provider, request)
 
     # ---- Resources ----
@@ -1097,7 +1133,7 @@ async def _call_tool(
         frag = storage.create_fragment(data, commit_id=commit.id, embedding=embedding_bytes)
         storage._conn.execute(
             "UPDATE commits SET fragments_added = ? WHERE id = ?",
-            (f'["{frag.id}"]', commit.id),
+            (json.dumps([frag.id]), commit.id),
         )
         from .events import log_event
         log_event(
@@ -1160,7 +1196,7 @@ async def _call_tool(
         )
         storage._conn.execute(
             "UPDATE commits SET fragments_added = ? WHERE id = ?",
-            (f'["{frag.id}"]', commit.id),
+            (json.dumps([frag.id]), commit.id),
         )
         from .events import log_event
         log_event(
@@ -1221,7 +1257,7 @@ async def _call_tool(
         frag = storage.create_fragment(data, commit_id=commit.id, embedding=embedding_bytes)
         storage._conn.execute(
             "UPDATE commits SET fragments_added = ? WHERE id = ?",
-            (f'["{frag.id}"]', commit.id),
+            (json.dumps([frag.id]), commit.id),
         )
         from .events import log_event
         log_event(
@@ -1337,7 +1373,7 @@ async def _call_tool(
 
         storage._conn.execute(
             "UPDATE commits SET fragments_added = ? WHERE id = ?",
-            (f'["{new_frag.id}"]', commit.id),
+            (json.dumps([new_frag.id]), commit.id),
         )
         from .events import log_event
         log_event(
@@ -1415,7 +1451,10 @@ async def _call_tool(
         from .events import log_event
         from .models import FragmentUpdate
         frag_id_prefix = args["fragment_id"]
-        target_value = float(args.get("value", 1.0))
+        try:
+            target_value = float(args.get("value", 1.0))
+        except (TypeError, ValueError):
+            raise McpError(-32602, "Invalid params: 'value' must be a number")
         if not (0.05 <= target_value <= 1.0):
             return _tool_text(
                 f"Error: value must be in [0.05, 1.0]; got {target_value}."
@@ -1467,7 +1506,11 @@ async def _call_tool(
     if name == "archaeology":
         query = args["query"]
         scope_handle = args.get("scope") or _resolve_scope_from_cwd_or_default()
-        limit = int(args.get("limit", 5))
+        try:
+            limit = int(args.get("limit", 5))
+        except (TypeError, ValueError):
+            raise McpError(-32602, "Invalid params: 'limit' must be an integer")
+        limit = max(1, min(limit, 50))
         # Three resolution paths in priority order: full id, 8-char prefix,
         # natural-language search. First two are cheap exact lookups; the
         # last falls through to recall() so the agent gets the full reading.
