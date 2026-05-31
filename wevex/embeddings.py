@@ -275,7 +275,7 @@ class FastembedProvider(EmbeddingProvider):
         self._model = None
         return True
 
-    def embed(self, texts: List[str]) -> List[List[float]]:
+    def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
         model = self._ensure_model()
