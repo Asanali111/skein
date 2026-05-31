@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 # PyPI package + CLI binary share the name `wevex`.
 name = "wevex"
-version = "0.2.1"
+version = "0.2.2"
 description = "Local MCP context bus for coding LLMs (Claude Code, Cursor, Codex, Gemini CLI, Antigravity, Copilot, VS Code, opencode)."
 readme = "README.md"
 requires-python = ">=3.9"

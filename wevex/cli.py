@@ -723,6 +723,78 @@ def restart() -> None:
         sys.exit(1)
 
 
+def _windows_detached_upgrade(latest, console, err_console, ui) -> None:
+    """Run the pip upgrade on Windows without hitting the locked-exe error.
+
+    A running ``wevex.exe`` can't be deleted, so pip's "Uninstalling
+    wevex-X" step dies with WinError 32. Spawn a detached Python helper in a
+    new console that waits for this process to exit, retries
+    ``pip install --upgrade wevex`` until the exe unlocks, then restarts the
+    daemon. The foreground command returns immediately afterwards so the file
+    is freed.
+    """
+    import tempfile
+    import textwrap
+
+    helper_src = textwrap.dedent(
+        f"""
+        import subprocess, sys, time, os
+        py = {sys.executable!r}
+        print("Waiting for wevex to close, then upgrading...", flush=True)
+        ok = False
+        for _ in range(60):
+            r = subprocess.run([py, "-m", "pip", "install", "--upgrade", "wevex"])
+            if r.returncode == 0:
+                ok = True
+                break
+            time.sleep(1)
+        if ok:
+            print("\\nUpgrade complete. Restarting the wevex daemon...", flush=True)
+            subprocess.run([py, "-m", "wevex", "restart"])
+            print("\\nDone -- you can close this window.", flush=True)
+        else:
+            print("\\nUpgrade failed after several retries. Close any running "
+                  "wevex processes and run 'wevex update' again.", flush=True)
+        try:
+            os.remove(__file__)
+        except OSError:
+            pass
+        time.sleep(6)
+        sys.exit(0 if ok else 1)
+        """
+    ).strip()
+
+    fd, helper_path = tempfile.mkstemp(prefix="wevex_upgrade_", suffix=".py")
+    try:
+        os.write(fd, helper_src.encode("utf-8"))
+    finally:
+        os.close(fd)
+
+    CREATE_NEW_CONSOLE = 0x00000010
+    CREATE_NEW_PROCESS_GROUP = 0x00000200
+    try:
+        subprocess.Popen(
+            [sys.executable, helper_path],
+            creationflags=CREATE_NEW_CONSOLE | CREATE_NEW_PROCESS_GROUP,
+            close_fds=True,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        err_console.print(f"  [red]✗[/red] Could not start the upgrade helper: {exc}")
+        sys.exit(1)
+
+    ui.blank()
+    ui.step(
+        f"Upgrading wevex → {latest} in a new window",
+        detail="this window must close so the running wevex.exe can be replaced",
+        state="ok",
+    )
+    console.print(
+        "  [dim]The daemon restarts automatically when the upgrade finishes "
+        "(a few seconds). Run [bold]wevex status[/bold] afterwards to confirm.[/dim]"
+    )
+    ui.blank()
+
+
 @main.command()
 @click.option("--check", "check_only", is_flag=True, default=False,
               help="Only check for an update; don't install anything.")
@@ -819,6 +891,16 @@ def update(check_only: bool) -> None:
     else:
         # Fallback: pip install --upgrade in the same Python that's running
         upgrade_cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "wevex"]
+
+    # Windows can't replace a running executable: pip's `Uninstalling
+    # wevex-X` step fails with WinError 32 because *this* wevex.exe is the
+    # locked file. Hand the pip upgrade to a detached helper that waits for
+    # this process to exit, then upgrades and restarts the daemon. pipx / uv
+    # manage their own shims, so only the pip fallback needs this.
+    is_pip_fallback = not (is_pipx or is_uv_tool)
+    if sys.platform == "win32" and is_pip_fallback:
+        _windows_detached_upgrade(latest, console, err_console, ui)
+        return
 
     ui.blank()
     ui.step(f"Upgrading wevex → {latest}", detail=" ".join(upgrade_cmd), state="ok")
