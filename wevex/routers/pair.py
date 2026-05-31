@@ -100,12 +100,14 @@ async def pair_browser(request: Request) -> JSONResponse:
             status_code=503,
         )
 
-    # Use the request URL as the source of truth for the daemon URL so the
-    # returned value points at whichever port the daemon is actually bound
-    # to (matters when the user overrides --port or runs a sidecar daemon
-    # on a non-default port). ``request.url`` includes the path, so peel
-    # back to scheme+host+port via the URL components.
-    base_url = f"{request.url.scheme}://{request.url.netloc}"
+    # Build the returned URL from the daemon's OWN configured bind, never from
+    # ``request.url`` — ``request.url.netloc`` reflects the client-supplied
+    # ``Host`` header, so a caller could set ``Host: evil:1234`` and the
+    # extension would then send all subsequent token-bearing MCP traffic to
+    # the attacker's host. A non-loopback bind (0.0.0.0/::) is reported back
+    # as 127.0.0.1 since that's where a local extension actually reaches it.
+    host = cfg.host if cfg.host not in ("0.0.0.0", "::", "") else "127.0.0.1"
+    base_url = f"http://{host}:{cfg.port}"
 
     logger.info("paired with browser extension at origin %s", origin)
     return JSONResponse({
