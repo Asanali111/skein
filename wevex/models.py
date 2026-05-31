@@ -148,11 +148,17 @@ class Commit(CommitCreate):
 
 class FragmentCreate(BaseModel):
     type: str = Field(..., description=f"One of {sorted(FRAGMENT_TYPES)}")
-    content: str = Field(..., min_length=1)
+    content: str = Field(..., min_length=1, max_length=200_000)
     scope_id: str
     owner_id: str
     confidence: Optional[float] = Field(None, ge=0.0, le=1.0)
-    ttl_seconds: Optional[int] = Field(None, description="Override default TTL. 0 = permanent.")
+    # ge=0 (0 = permanent) and a 100-year ceiling: an unbounded ttl_seconds
+    # overflows ``timedelta``/``datetime`` in create_fragment, crashing the
+    # write path with an unhandled OverflowError.
+    ttl_seconds: Optional[int] = Field(
+        None, ge=0, le=3_153_600_000,
+        description="Override default TTL. 0 = permanent.",
+    )
     tags: list[str] = Field(default_factory=list)
     territory: Optional[str] = None
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -226,7 +232,10 @@ class LeaseCreate(BaseModel):
     scope_id: str
     glob: str = Field(..., description="File-glob pattern, e.g. 'backend/auth/**'")
     owner_id: str
-    ttl_seconds: int = Field(300, description="How long to hold the lease (seconds). Default 5 min.")
+    ttl_seconds: int = Field(
+        300, ge=0, le=3_153_600_000,
+        description="How long to hold the lease (seconds). Default 5 min.",
+    )
     reason: Optional[str] = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -276,7 +285,7 @@ class Chunk(ChunkCreate):
 
 
 class ChunkSearchRequest(BaseModel):
-    query: str = Field(..., min_length=1)
+    query: str = Field(..., min_length=1, max_length=4000)
     scope: str
     languages: Optional[list[str]] = None
     source_root: Optional[str] = None
@@ -313,7 +322,7 @@ class ChunkStats(BaseModel):
 # ---------------------------------------------------------------------------
 
 class RecallRequest(BaseModel):
-    query: str = Field(..., min_length=1)
+    query: str = Field(..., min_length=1, max_length=4000)
     scope: str
     types: Optional[list[str]] = None
     territory: Optional[str] = None

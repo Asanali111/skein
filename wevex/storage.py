@@ -102,7 +102,11 @@ class Storage:
     _initialized_paths: set = set()
 
     def _init_schema(self) -> None:
-        if self.db_path in Storage._initialized_paths:
+        # The path cache skips the ~5ms executescript on repeat opens, but a
+        # cached path whose DB file was deleted/rotated underneath us would
+        # otherwise yield a Storage with no tables. Confirm the schema is
+        # actually present (one cheap sqlite_master lookup) before trusting it.
+        if self.db_path in Storage._initialized_paths and self._fragments_table_exists():
             return
         # Pre-migrations FIRST — schema.sql references the provenance columns
         # in CREATE INDEX statements, which would fail on a legacy DB that
@@ -197,6 +201,7 @@ class Storage:
         self, *, status: str = "pending", scope_id: Optional[str] = None,
         limit: int = 50, offset: int = 0,
     ) -> list[dict[str, Any]]:
+        limit, offset = _clamp_page(limit, offset)
         conditions = ["status = ?"]
         params: list[Any] = [status]
         if scope_id:
@@ -416,6 +421,7 @@ class Storage:
             raise
 
     def list_identities(self, limit: int = 100, offset: int = 0) -> list[Identity]:
+        limit, offset = _clamp_page(limit, offset)
         rows = self._conn.execute(
             "SELECT * FROM identities ORDER BY created_at DESC LIMIT ? OFFSET ?",
             (limit, offset),
@@ -454,6 +460,7 @@ class Storage:
 
     def list_scopes(self, owner_id: Optional[str] = None,
                     limit: int = 100, offset: int = 0) -> list[Scope]:
+        limit, offset = _clamp_page(limit, offset)
         if owner_id:
             rows = self._conn.execute(
                 "SELECT * FROM scopes WHERE owner_id = ? ORDER BY created_at DESC "
@@ -529,7 +536,13 @@ class Storage:
             dedupe_key = hashlib.sha256(seed).hexdigest()[:32]
             existing = self._conn.execute(
                 "SELECT id FROM fragments WHERE dedupe_key = ? "
-                "AND is_stale = 0 LIMIT 1",
+                "AND is_stale = 0 "
+                # Don't re-assert onto a fragment whose TTL has already lapsed
+                # (expired-but-not-yet-swept): that would revive logically-dead
+                # content and value-boost it without refreshing expires_at.
+                # Matches the live-fragment convention used in the read paths.
+                "AND (expires_at IS NULL OR expires_at > datetime('now')) "
+                "LIMIT 1",
                 (dedupe_key,),
             ).fetchone()
             if existing:
@@ -726,6 +739,7 @@ class Storage:
                         offset: int = 0,
                         since: Optional[str] = None,
                         exclude_tool: Optional[str] = None) -> list[Fragment]:
+        limit, offset = _clamp_page(limit, offset)
         conditions = ["1=1"]
         params: list[Any] = []
 
@@ -1112,6 +1126,7 @@ class Storage:
 
     def list_commits(self, scope_id: Optional[str] = None,
                       limit: int = 50, offset: int = 0) -> list[Commit]:
+        limit, offset = _clamp_page(limit, offset)
         if scope_id:
             rows = self._conn.execute(
                 "SELECT * FROM commits WHERE scope_id = ? "
@@ -1280,6 +1295,7 @@ class Storage:
                      source_root: Optional[str] = None,
                      language: Optional[str] = None,
                      limit: int = 50, offset: int = 0) -> list[Chunk]:
+        limit, offset = _clamp_page(limit, offset)
         conditions, params = ["1=1"], []
         if scope_id:
             conditions.append("scope_id = ?")
@@ -1320,7 +1336,7 @@ class Storage:
         ).fetchone()[0]
         by_lang = dict(self._conn.execute(
             f"SELECT COALESCE(language, 'unknown'), COUNT(*) FROM chunks "
-            f"{scope_clause} GROUP BY language",
+            f"{scope_clause} GROUP BY COALESCE(language, 'unknown')",
             params,
         ).fetchall())
         by_root = dict(self._conn.execute(
@@ -1468,15 +1484,30 @@ class Storage:
         )
 
         # min-heap of size <= limit: (score, id)
+        row_bytes = dimension * 4
         heap: list[tuple[float, str]] = []
         while True:
             rows = cur.fetchmany(batch_size)
             if not rows:
                 break
             ids = [r[0] for r in rows]
-            mat = np.frombuffer(
-                b"".join(r[1] for r in rows), dtype=np.float32,
-            ).reshape(-1, dimension)
+            blob = b"".join(r[1] for r in rows)
+            # Drop any chunk whose stored embedding is the wrong dimension
+            # (e.g. legacy vectors after a provider switch): skip them rather
+            # than let one bad row raise in reshape() and silently degrade the
+            # whole batch's vector search to keyword-only. Mirrors vector_search.
+            if len(blob) != len(rows) * row_bytes:
+                clean_ids: list[str] = []
+                clean_bufs: list[bytes] = []
+                for rid, rbuf in rows:
+                    if rbuf is not None and len(rbuf) == row_bytes:
+                        clean_ids.append(rid)
+                        clean_bufs.append(rbuf)
+                if not clean_ids:
+                    continue
+                ids = clean_ids
+                blob = b"".join(clean_bufs)
+            mat = np.frombuffer(blob, dtype=np.float32).reshape(-1, dimension)
             norms = np.linalg.norm(mat, axis=1)
             norms[norms == 0] = 1.0
             sims = mat @ q_unit / norms
@@ -1649,6 +1680,25 @@ def _row_to_chunk(row: sqlite3.Row) -> Chunk:
 # ---------------------------------------------------------------------------
 # SQL utilities
 # ---------------------------------------------------------------------------
+
+def _clamp_page(limit: int, offset: int = 0, *, max_limit: int = 1000) -> tuple[int, int]:
+    """Clamp pagination params to a safe range.
+
+    A negative ``LIMIT`` means *unlimited* in SQLite (full-table materialisation
+    → trivial memory/CPU DoS); a huge ``LIMIT``/``OFFSET`` is the same hazard.
+    Bounding here protects every caller — REST, CLI, MCP, internal — not just
+    the endpoints that happen to declare ``Query(ge=..., le=...)``.
+    """
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        limit = max_limit
+    try:
+        offset = int(offset)
+    except (TypeError, ValueError):
+        offset = 0
+    return max(0, min(limit, max_limit)), max(0, offset)
+
 
 def _fts_escape(query: str) -> str:
     """Escape special FTS5 characters and append wildcard for prefix match."""
