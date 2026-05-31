@@ -40,6 +40,52 @@ console = Console()
 err_console = Console(stderr=True)
 
 
+def _ensure_windows_path() -> None:
+    """Add the Python user Scripts dir to PATH if missing on Windows.
+
+    Fixes `wevex: command not found` after a plain `pip install wevex`.
+    pip --user installs to %APPDATA%\\Python\\PythonXYZ\\Scripts which Windows
+    does not add to PATH automatically.  Runs once per shell session (fast
+    no-op on subsequent calls and on non-Windows platforms).
+    """
+    if sys.platform != "win32":
+        return
+    import sysconfig
+    scripts = Path(sysconfig.get_path("scripts", "nt_user"))
+    if not scripts.exists():
+        return
+    scripts_str = str(scripts)
+    path_entries = os.environ.get("PATH", "").split(os.pathsep)
+    if any(e.rstrip("\\") == scripts_str.rstrip("\\") for e in path_entries):
+        return
+    # Not on PATH — fix for this process and permanently in the registry.
+    os.environ["PATH"] = scripts_str + os.pathsep + os.environ.get("PATH", "")
+    try:
+        import winreg
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_ALL_ACCESS
+        )
+        try:
+            current, _ = winreg.QueryValueEx(key, "PATH")
+        except FileNotFoundError:
+            current = ""
+        entries = [e for e in current.split(os.pathsep) if e]
+        if scripts_str not in entries:
+            winreg.SetValueEx(
+                key, "PATH", 0, winreg.REG_EXPAND_SZ,
+                os.pathsep.join(entries + [scripts_str])
+            )
+        winreg.CloseKey(key)
+        err_console.print(
+            f"[yellow]PATH updated:[/yellow] added {scripts_str} to your user PATH. "
+            "Open a new terminal so [bold]wevex[/bold] works from anywhere."
+        )
+    except Exception:
+        err_console.print(
+            f"[yellow]Tip:[/yellow] add this to your PATH so wevex works from any terminal:\n"
+            f"  [dim]{scripts_str}[/dim]"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -149,6 +195,7 @@ def main(ctx: click.Context) -> None:
 
     Full docs: https://github.com/Asanali111/wevex
     """
+    _ensure_windows_path()
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
 

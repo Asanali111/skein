@@ -90,6 +90,16 @@ After `wevex up`, every detected client automatically has shared context for the
 
 ### Windows notes
 
+**Install.** Use the one-liner PowerShell installer — it creates an isolated venv and sets your PATH automatically:
+
+```powershell
+irm https://raw.githubusercontent.com/Asanali111/wevex/main/bin/install.ps1 | iex
+```
+
+Alternatively, `pipx install wevex` also handles PATH correctly.  Plain `pip install wevex` works too but puts the `wevex` binary in `%APPDATA%\Python\PythonXYZ\Scripts\` which is not on PATH by default. If you see `wevex: CommandNotFoundException` after a pip install, either re-run `py -m wevex up` once (wevex fixes its own PATH on first run) or use the installer above.
+
+---
+
 `wevex up` on Windows registers a Scheduled Task named `Wevex\Daemon` at the
 current user's logon — no admin elevation needed. The XML definition pins
 `RestartOnFailure` to the same 3-retry/1-minute interval the launchd
