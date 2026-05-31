@@ -37,6 +37,45 @@ async function setState(patch) {
   await chrome.storage.local.set(patch);
 }
 
+// ---- sender trust + state sanitisation ---------------------------------
+
+// The LLM sites we inject content scripts into. A message that arrives from a
+// tab must originate from one of these — a content-script compromise on any
+// other origin must not be able to drive authenticated daemon calls.
+const ALLOWED_CONTENT_ORIGINS = new Set([
+  "https://claude.ai",
+  "https://chatgpt.com",
+  "https://chat.openai.com",
+  "https://gemini.google.com",
+]);
+
+// Only act on messages from THIS extension. Without this check the worker
+// dispatches on `msg.type` alone, so any content script (or other surface
+// that can reach the runtime channel) could call recall/note/pair and the
+// worker would execute authenticated MCP calls against the local daemon.
+function isTrustedSender(sender) {
+  if (!sender || sender.id !== chrome.runtime.id) return false;
+  if (sender.tab) {
+    // Content script: pin to the sites we actually support.
+    let origin = sender.origin || "";
+    if (!origin && sender.url) {
+      try { origin = new URL(sender.url).origin; } catch (_e) { origin = ""; }
+    }
+    return ALLOWED_CONTENT_ORIGINS.has(origin);
+  }
+  // Our own popup / extension pages.
+  return true;
+}
+
+// Strip the raw bearer token out of any state we hand back to a message
+// recipient. Nothing outside this worker needs the token value — content
+// scripts and the popup proxy every daemon call back through here — so it
+// must never enter page-reachable JS, where a page/extension compromise
+// could read or exfiltrate it. Callers only need the paired/not-paired bit.
+function publicState(state) {
+  return { ...state, bearerToken: state.bearerToken ? true : null };
+}
+
 // ---- pairing -----------------------------------------------------------
 
 // Pair with the local daemon — one call, idempotent. The daemon's
@@ -124,6 +163,11 @@ async function listScopes() {
 // chrome.runtime.sendMessage(...). Each message has a `type` field;
 // we dispatch and return the result via the sendResponse callback.
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!isTrustedSender(sender)) {
+    console.warn("[wevex] rejected message from untrusted sender", sender && sender.id);
+    sendResponse({ ok: false, error: "untrusted sender" });
+    return; // channel closed; we answered synchronously
+  }
   (async () => {
     try {
       switch (msg.type) {
@@ -132,17 +176,25 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           return;
 
         case "getState":
-          sendResponse({ ok: true, state: await getState() });
+          sendResponse({ ok: true, state: publicState(await getState()) });
           return;
 
         case "setState":
           await setState(msg.patch || {});
-          sendResponse({ ok: true, state: await getState() });
+          sendResponse({ ok: true, state: publicState(await getState()) });
           return;
 
-        case "pair":
-          sendResponse({ ok: true, data: await pair() });
+        case "pair": {
+          // Pairing's side effect (storing the token in the worker) is all
+          // the caller needs — don't echo the raw token back into page JS.
+          const data = await pair();
+          sendResponse({ ok: true, data: {
+            daemon_url: data.daemon_url,
+            mcp_url: data.mcp_url,
+            protocol_version: data.protocol_version,
+          } });
           return;
+        }
 
         case "recall": {
           // msg.query (string), msg.scope (string, optional), msg.limit (int, optional)
