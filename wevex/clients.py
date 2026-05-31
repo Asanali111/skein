@@ -29,6 +29,8 @@ from typing import Optional
 
 import yaml
 
+from . import paths as _paths
+
 logger = logging.getLogger("wevex.clients")
 
 
@@ -83,10 +85,13 @@ def _read_json(path: Path) -> dict:
 
 
 def _write_json(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
-        f.write("\n")
+    # These client configs embed the daemon bearer token (Authorization
+    # header). Write owner-only + atomically so the credential is never
+    # world-readable on a shared host and a crash can't truncate the user's
+    # settings file.
+    _paths.atomic_write_text(
+        path, json.dumps(data, indent=2) + "\n", secret=True, restrict_parent=False,
+    )
 
 
 def _delete_if_empty_or_orphan(path: Path, key_chain: list[str]) -> bool:
@@ -133,8 +138,8 @@ def _write_hermes_env_key(env_path: Path, key: str, value: str) -> None:
         if lines and not lines[-1].endswith("\n"):
             lines[-1] += "\n"
         lines.append(f"{key}={value}\n")
-    env_path.parent.mkdir(parents=True, exist_ok=True)
-    env_path.write_text("".join(lines), encoding="utf-8")
+    # Holds MCP_WEVEX_API_KEY (the bearer token) — owner-only + atomic.
+    _paths.atomic_write_text(env_path, "".join(lines), secret=True, restrict_parent=False)
 
 
 # ---------------------------------------------------------------------------
@@ -506,7 +511,8 @@ class CodexClient(BaseClient):
         # Ensure exactly one trailing newline before the new block, no double-
         # blank padding.
         body = cleaned.rstrip() + "\n" if cleaned.strip() else ""
-        path.write_text(body + block)
+        # Embeds the literal bearer token — owner-only + atomic.
+        _paths.atomic_write_text(path, body + block, secret=True, restrict_parent=False)
         return [str(path)]
 
     def disconnect(self, recorded_paths=None) -> list[str]:
@@ -660,9 +666,9 @@ def _read_yaml(path: Path) -> dict:
 
 
 def _write_yaml(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
+    # Hermes config.yaml embeds the bearer token — owner-only + atomic.
+    text = yaml.dump(data, default_flow_style=False, allow_unicode=True)
+    _paths.atomic_write_text(path, text, secret=True, restrict_parent=False)
 
 
 class GooseClient(BaseClient):
@@ -817,8 +823,8 @@ class GptmeClient(BaseClient):
             f'headers = {{Authorization = "Bearer {bearer_token}"}}\n'
         )
         body = cleaned.rstrip() + "\n" if cleaned.strip() else ""
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(body + block)
+        # Embeds the literal bearer token — owner-only + atomic.
+        _paths.atomic_write_text(path, body + block, secret=True, restrict_parent=False)
         return [str(path)]
 
     def disconnect(self, recorded_paths=None) -> list[str]:

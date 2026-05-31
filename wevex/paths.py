@@ -112,3 +112,47 @@ def events_jsonl_path() -> Path:
 
 def backend_cache_file() -> Path:
     return wevex_home() / "backend"
+
+
+def atomic_write_text(
+    path: Path, text: str, *, secret: bool = False, restrict_parent: bool = True,
+) -> None:
+    """Write ``text`` to ``path`` atomically (temp file + ``os.replace``).
+
+    Atomicity prevents a crash or concurrent writer from leaving a truncated /
+    half-written file (corrupting e.g. the user's ``.claude/settings.json`` or
+    Wevex's own ``config.json``).
+
+    When ``secret=True`` the file holds a credential (the daemon bearer token):
+    the file is chmod'd to ``0o600`` *before* it is moved into place, so it is
+    never momentarily world-readable on a multi-user POSIX host. When the file
+    lives in a directory Wevex itself owns, ``restrict_parent=True`` also tightens
+    that directory to ``0o700``; pass ``restrict_parent=False`` for third-party
+    tool config dirs (``~/.cursor``, ``~/.gemini``, …) so we don't reach in and
+    re-permission a directory we don't own — the ``0o600`` file is enough.
+    ``chmod`` is best-effort on Windows (it only toggles the read-only bit
+    there) and never fatal.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if secret and restrict_parent:
+        try:
+            os.chmod(path.parent, 0o700)
+        except OSError:
+            pass
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(text)
+        if secret:
+            try:
+                os.chmod(tmp, 0o600)
+            except OSError:
+                pass
+        os.replace(tmp, path)
+    finally:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass

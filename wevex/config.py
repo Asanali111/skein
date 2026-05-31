@@ -132,10 +132,11 @@ class WevexConfig:
 
     def save(self, path: Optional[Path] = None) -> None:
         p = path or _default_config_path()
-        p.parent.mkdir(parents=True, exist_ok=True)
-        with open(p, "w", encoding="utf-8") as f:
-            json.dump(self._raw, f, indent=2)
-            f.write("\n")
+        # config.json holds the plaintext bearer token — the sole credential
+        # gating the daemon. Write it owner-only and atomically.
+        _wevex_paths.atomic_write_text(
+            p, json.dumps(self._raw, indent=2) + "\n", secret=True,
+        )
 
     @property
     def base_url(self) -> str:
@@ -225,9 +226,11 @@ def load_config(path: Optional[Path] = None) -> WevexConfig:
 
     if needs_save and p.exists():
         try:
-            with open(p, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-                f.write("\n")
+            # Same owner-only + atomic treatment as save(): this rewrite also
+            # persists the bearer token.
+            _wevex_paths.atomic_write_text(
+                p, json.dumps(data, indent=2) + "\n", secret=True,
+            )
         except OSError:
             # A read-only or sandboxed config dir shouldn't crash the daemon;
             # the in-memory migration (via WevexConfig.__init__) is enough
